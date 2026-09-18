@@ -1,0 +1,83 @@
+# 项目约定
+
+简历 Web 应用：填表 → 自动存草稿 → 手动存版本 → 导出 docx / 浏览器打印 PDF。
+
+## 文档索引
+
+| 文档 | 用途 |
+| --- | --- |
+| `project-scope.md` | 需求与行为、简历结构定义 |
+| `tech-stack.md` | 技术选型与实现约定、排版参数（样式来源） |
+| `impl-plan.md` | 分步实施计划（Step 1~16） |
+
+改需求或新增实现约定前，先对应更新这几份文档。
+
+## 技术栈
+
+- 运行时 / 包管理：Bun 1.4.2
+- 前端：React 19 + TypeScript + Vite 8，Tailwind CSS，shadcn/ui（源码拷贝式）
+- 服务端：Express 5 + zod（DTO 校验）
+- ORM：Prisma 7.10.0（连接串在 `prisma.config.ts`，运行时显式传驱动适配器）
+- 数据库：PostgreSQL（阿里云 RDS）
+- 鉴权：express-session + connect-pg-simple（数据库 Session）
+- 密码哈希：`Bun.password`（内置 argon2id）
+- 导出：`docx` 库代码构建；PDF 走浏览器打印
+- 工程：Bun workspaces：`client/` + `server/` + `shared/`
+
+## 目录结构
+
+```
+client/         React 前端
+server/          Express 后端 + Prisma
+  .env          数据库连接串、SESSION_SECRET（不入库）
+  prisma/        schema + migrations + seed.ts
+shared/          前后端共享：zod schema、类型、样式常量
+```
+
+## 常用命令
+
+```bash
+bun install              # 工作区安装依赖
+bun run dev              # 同时起前后端
+bun run db:generate      # 生成 Prisma Client
+bun run db:migrate       # 建表/改表（开发期）
+bun run db:seed          # 预置账号
+```
+
+需在 `server/` 目录下执行 Prisma 命令（Bun 隔离安装，依赖在各 workspace 内）。
+
+## 环境变量
+
+- 只在 `server/.env`，不入库。`.env.example` 提交。
+- Bun 运行时自动从 cwd（`server/`）加载 `.env`。
+- Prisma CLI 不自动加载，由 `prisma.config.ts` 里的 dotenv 显式读取 `server/.env`。
+
+## 关键实现约定
+
+- **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`pagehide` 时用 `sendBeacon` 补发。
+- **版本**：点「存档」生成只读快照；恢复 = 覆盖当前草稿，不做 diff、不生成新版本。照片跟随版本（`resume_versions.photo_id`）。
+- **照片**：base64 存独立 `photos` 表，简历与快照只存 `photo_id` 引用；`photos` 只增不删。前端必须压缩后再传。
+- **简历结构**：只定义一份 zod schema 于 `shared/`，前端表单、后端校验、docx 生成三处复用。
+- **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx 共同读取，禁止两侧硬编码。
+- **多简历**：表按 `user 1:N resume 1:N resume_version` 建，UI 暂当 1:1 用，接口路径带 `:id`。
+- **docx 导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
+
+## 简历结构（模块顺序固定）
+
+基本信息 → 教育经历 → 专业技能 → 工作经历 → 实习经历 → 项目经历 → 页脚
+
+字段定义见 `project-scope.md` 的「简历结构」。注意：
+- 工作 / 实习经历的「概述」为可选字段。
+- 专业技能无编号，其余要点列表带数字编号。
+- 教育经历允许多条。
+- 页脚为手填文本，留空则不输出。
+
+## 排版参数
+
+字体、字号、行距、页边距、标题样式（白字黑底）、要点列表缩进等数值，提取自原 Word 简历，见 `tech-stack.md` 的「样式来源」表。实现时以该表为准。
+
+## Git
+
+- 提交信息用中文，概括本次改动。
+- 每次提交前确认 `.env` 未进入暂存区。
+- 变更分 step 推进，一个 step 完成后及时提交。

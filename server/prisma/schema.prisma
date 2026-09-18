@@ -1,0 +1,57 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id           String   @id @default(uuid())
+  username     String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+
+  resumes Resume[]
+}
+
+model Resume {
+  id        String          @id @default(uuid())
+  userId    String
+  user      User            @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String          @default("我的简历")
+  data      Json            @default("{}")
+  photoId   String?
+  photo     Photo?          @relation("CurrentPhoto", fields: [photoId], references: [id])
+  photos    Photo[]         @relation("ResumePhotos")
+  versions  ResumeVersion[]
+  updatedAt DateTime        @updatedAt
+
+  @@index([userId])
+}
+
+model Photo {
+  id        String          @id @default(uuid())
+  resumeId  String
+  resume    Resume          @relation("ResumePhotos", fields: [resumeId], references: [id], onDelete: Cascade)
+  data      String
+  createdAt DateTime         @default(now())
+
+  currentFor Resume[]        @relation("CurrentPhoto")
+  inVersions ResumeVersion[] @relation("VersionPhoto")
+
+  @@index([resumeId])
+}
+
+model ResumeVersion {
+  id        String   @id @default(uuid())
+  resumeId  String
+  resume    Resume   @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+  snapshot  Json
+  photoId   String?
+  photo     Photo?   @relation("VersionPhoto", fields: [photoId], references: [id])
+  note      String?
+  createdAt DateTime @default(now())
+
+  @@index([resumeId])
+}

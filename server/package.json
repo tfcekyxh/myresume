@@ -4,15 +4,23 @@
   "type": "module",
   "scripts": {
     "dev": "bun --watch src/index.ts",
-    "start": "bun src/index.ts"
+    "start": "bun src/index.ts",
+    "db:generate": "prisma generate",
+    "db:migrate": "prisma migrate dev",
+    "db:seed": "prisma db seed",
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@mymenu/shared": "workspace:*",
+    "@prisma/adapter-pg": "^7.10.0",
+    "@prisma/client": "^7.10.0",
     "express": "^5.1.0"
   },
   "devDependencies": {
     "@types/bun": "^1.2.0",
     "@types/express": "^5.0.0",
+    "dotenv": "^18.0.0",
+    "prisma": "7.10.0",
     "typescript": "~6.0.2"
   }
 }

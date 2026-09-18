@@ -37,14 +37,18 @@ client: react react-dom react-router-dom tailwindcss
         lucide-react
         （另有 shadcn add 生成的 radix 组件）
 
-server: express zod express-session connect-pg-simple docx @prisma/client
-        -d @types/express-session @types/connect-pg-simple
-        （prisma CLI 用 bunx 调用，不写进 dependencies）
+server: express zod express-session connect-pg-simple docx
+        @prisma/client @prisma/adapter-pg
+        -d prisma dotenv @types/express-session @types/connect-pg-simple
 
 shared: zod
 ```
 
-被 Bun 取代、无需安装的依赖：`argon2`（用 `Bun.password`）、`dotenv`（自动加载 `.env`）、`tsx`/`ts-node`（直接跑 TS）、`nodemon`（`bun --watch`）、`vitest`（`bun test`）。
+被 Bun 取代、无需安装的依赖：`argon2`（用 `Bun.password`）、`tsx`/`ts-node`（直接跑 TS）、`nodemon`（`bun --watch`）、`vitest`（`bun test`）。
+
+注意 `dotenv` **仍然需要**：Bun 运行时能自动加载 `.env`，但 Prisma CLI 不能，必须在 `prisma.config.ts` 里显式加载。
+
+已实测的版本：Bun 1.4.2、React 19.2.8、Vite 8.3.0、TypeScript 6.0.2、Express 5.1.0、Prisma 7.10.0。
 
 <br />
 
@@ -176,19 +180,84 @@ bun run --filter '*' dev     # 跨 workspace 执行
 
 <br />
 
+## Prisma 7 配置方式
+
+Prisma 7 与 6 的配置模型差别很大，以下为实际采用的方式。
+
+**1. 连接串不在 schema 里**
+
+`schema.prisma` 的 datasource 只保留 provider，写 `url` 会直接报错：
+
+```prisma
+datasource db {
+  provider = "postgresql"
+}
+```
+
+**2. 连接串移到 `prisma.config.ts`**
+
+CLI（migrate / db push / studio）从配置文件读取。注意 Prisma CLI 不自动加载 `.env`，需显式引入 dotenv：
+
+```ts
+import path from 'node:path'
+import { config } from 'dotenv'
+import { defineConfig, env } from 'prisma/config'
+
+config({ path: path.join(import.meta.dirname, '.env') })
+
+export default defineConfig({
+  schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
+  datasource: { url: env('DATABASE_URL') },
+  migrations: {
+    path: path.join(import.meta.dirname, 'prisma', 'migrations'),
+    seed: 'bun prisma/seed.ts',
+  },
+})
+```
+
+**3. 运行时必须显式传驱动适配器**
+
+PrismaClient 不再自己读 `DATABASE_URL`，否则运行时报错：
+
+```ts
+import { PrismaClient } from '@prisma/client'
+import { PrismaPg } from '@prisma/adapter-pg'
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
+export const prisma = new PrismaClient({ adapter })
+```
+
+因此额外依赖 `@prisma/adapter-pg`。
+
+**4. 版本必须对齐**
+
+CLI 与 client 版本不一致会出问题。当前锁定 `prisma@7.10.0` 与 `@prisma/client@7.10.0`（`bun add prisma` 默认会拉 8.0.0-rc 预发布版，需显式指定版本）。
+
+<br />
+
+## 环境变量
+
+`.env` 放在 `server/`，因为只有服务端需要它。客户端若需环境变量，用 Vite 自己的 `.env` 与 `VITE_` 前缀。
+
+- Bun 运行时从 cwd（`server/`）自动加载 `.env`
+- Prisma CLI 由 `prisma.config.ts` 中的 dotenv 显式加载
+- `.env` 已被 `.gitignore` 覆盖，`.env.example` 提交进仓库
+
+<br />
+
 ## Prisma + Bun 注意点
 
-Bun 默认不执行依赖的 postinstall 脚本，而 `@prisma/client` 依赖 postinstall 生成 client。若安装后报 client 未生成，两种处理方式：
+Bun 默认不执行依赖的 postinstall 脚本，而 `@prisma/client` 依赖它生成 client。若安装后报 `Cannot find module '.prisma/client/default'`，两种处理方式：
 
-1. 在 `package.json` 中声明：
+1. 根 `package.json` 声明：
 
 ```json
 "trustedDependencies": ["@prisma/client", "prisma"]
 ```
 
-2. 每次安装后手动执行 `bunx prisma generate`。
+2. 手动执行 `bun run db:generate`。
 
-建议两者都做，并把 `bunx prisma generate` 写进 `postinstall` 脚本。
+注意 Bun 采用隔离安装，依赖装在各自 workspace 的 `node_modules`，因此 Prisma 命令要在 `server/` 目录下执行（或用根目录的 `db:*` 脚本转发）。
 
 <br />
 

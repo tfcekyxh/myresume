@@ -53,12 +53,40 @@ shared: zod
 ```
 users           id, username, password_hash, created_at
 session         sid, sess, expire          -- connect-pg-simple 自动创建，无需 migration
-resumes         id, user_id, data jsonb, photo_id, updated_at
+resumes         id, user_id, title, data jsonb, photo_id, updated_at
 photos          id, resume_id, data text, created_at   -- base64，只增不改
 resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
 ```
 
-`resumes` 是用户唯一草稿，`data` 存整份简历 JSON（**不含照片**），`photo_id` 指向当前使用的照片。`photos` 是只增不改的照片池，换照片即插入新行。`resume_versions` 存只读快照，同时记录当时的 `photo_id`，因此照片也被版本控制且不重复存储。
+关系为 `user 1:N resume 1:N resume_version`，`resume 1:N photo`（照片池）。
+
+**表按 1:N 建，UI 先当 1:1 用**：`resumes.user_id` 是普通索引而非唯一约束，带 `title` 字段，但界面不暴露简历列表页——登录后调 `GET /api/resumes/current` 取该用户唯一那份（不存在则自动创建）。将来要支持多份简历，只需补列表页与 `POST /api/resumes`，表结构和已有接口都不用改。
+
+`data` 存整份简历 JSON（**不含照片**），`photo_id` 指向当前使用的照片。`photos` 是只增不改的照片池，换照片即插入新行。`resume_versions` 存只读快照，同时记录当时的 `photo_id`，因此照片也被版本控制且不重复存储。
+
+<br />
+
+## 接口一览
+
+```
+POST   /api/auth/login
+POST   /api/auth/logout
+GET    /api/auth/me
+
+GET    /api/resumes/current
+PATCH  /api/resumes/:id/draft
+
+POST   /api/resumes/:id/photo
+
+GET    /api/resumes/:id/versions
+POST   /api/resumes/:id/versions
+GET    /api/resumes/:id/versions/:versionId
+POST   /api/resumes/:id/versions/:versionId/restore
+
+POST   /api/export/docx
+```
+
+路径从一开始就带 resume id，即使当前 UI 只有一份简历。这样将来加多简历功能时不必改动已有接口。
 
 <br />
 
@@ -75,9 +103,9 @@ resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
 ### 草稿保存
 
 - 草稿权威存储在服务端，前端不做持久化。
-- 编辑时 debounce 1s 整体 `PATCH /resumes/draft`，提交完整 JSON，整份覆盖。
+- 编辑时 debounce 1s 整体 `PATCH /api/resumes/:id/draft`，提交完整 JSON，整份覆盖。
 - `visibilitychange` / `pagehide` 时用 `navigator.sendBeacon` 立即补发一次，避免丢失最后一秒输入。
-- 照片不走草稿接口：上传单独走 `POST /resumes/photo`，服务端插入 `photos` 行并更新 `resumes.photo_id`。若新照片与当前照片内容相同则不插入新行。
+- 照片不走草稿接口：上传单独走 `POST /api/resumes/:id/photo`，服务端插入 `photos` 行并更新 `resumes.photo_id`。若新照片与当前照片内容相同则不插入新行。
 
 ### 版本
 

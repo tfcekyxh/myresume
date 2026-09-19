@@ -1,16 +1,5 @@
-import { expect, test, type Page } from '@playwright/test'
-
-const USERNAME = process.env.E2E_USERNAME ?? 'liujiantao'
-const PASSWORD = process.env.E2E_PASSWORD ?? 'liujiantao'
-
-/** 用预置账号完成登录，并等待进入编辑页。 */
-async function loginAsDefaultUser(page: Page) {
-  await page.goto('/login')
-  await page.getByLabel('用户名').fill(USERNAME)
-  await page.getByLabel('密码').fill(PASSWORD)
-  await page.getByRole('button', { name: '登录' }).click()
-  await expect(page).toHaveURL('/edit')
-}
+import { expect, test } from '@playwright/test'
+import { USERNAME, loginAsDefaultUser } from './helpers'
 
 test('未登录访问受保护页面会被重定向到登录页', async ({ page }) => {
   for (const path of ['/edit', '/versions', '/preview', '/']) {

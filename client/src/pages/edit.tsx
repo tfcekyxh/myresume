@@ -1,6 +1,6 @@
 import { Link, useNavigate } from 'react-router-dom'
-import { RESUME_MODULES } from '@mymenu/shared'
 import { Button } from '@/components/ui/button'
+import { ResumeForm } from '@/components/resume-form'
 import { useCurrentUser, useLogout } from '@/lib/auth'
 
 export function EditPage() {
@@ -35,20 +35,8 @@ export function EditPage() {
       </nav>
 
       <section className="mt-8">
-        <h2 className="text-sm font-medium text-muted-foreground">简历模块</h2>
-        <ul className="mt-3 space-y-1">
-          {RESUME_MODULES.map((m) => (
-            <li key={m.key} className="text-sm">
-              {m.title}
-              {m.multiple && <span className="ml-2 text-muted-foreground">可多条</span>}
-            </li>
-          ))}
-        </ul>
+        <ResumeForm />
       </section>
-
-      <p className="mt-8 text-sm text-muted-foreground">
-        表单、自动保存与照片上传将在后续步骤实现。
-      </p>
     </div>
   )
 }

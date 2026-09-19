@@ -7,6 +7,7 @@
     "start": "bun src/index.ts",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
+    "db:migrate:deploy": "prisma migrate deploy",
     "db:seed": "prisma db seed",
     "db:studio": "prisma studio"
   },
@@ -16,9 +17,11 @@
     "@prisma/client": "^7.10.0",
     "connect-pg-simple": "^10.0.0",
     "docx": "^9.7.1",
+    "dotenv": "^18.0.0",
     "express": "^5.1.0",
     "express-session": "^1.19.0",
     "pg": "^8.23.0",
+    "prisma": "7.10.0",
     "zod": "^4.6.5"
   },
   "devDependencies": {
@@ -27,8 +30,6 @@
     "@types/express": "^5.0.0",
     "@types/express-session": "^1.19.0",
     "@types/pg": "^8.23.1",
-    "dotenv": "^18.0.0",
-    "prisma": "7.10.0",
     "typescript": "~6.0.2"
   }
 }

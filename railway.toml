@@ -1,0 +1,25 @@
+# Railway 部署配置（放在仓库根）
+#
+# 本项目是单服务部署：Express 一个进程同时提供 /api 接口与前端构建产物，
+# 前后端同源，因此不需要 CORS、也不改 session cookie 配置。
+#
+# 注意 [deploy].startCommand 是必需的：Railpack 会自动把 Vite 产物识别成
+# 纯静态站点并改用 Caddy 托管，那样 Express 根本不会启动，接口全挂。
+# 显式指定 startCommand 即可关掉这个自动行为。
+
+[build]
+builder = "RAILPACK"
+
+# prisma generate 必须在这里显式执行：Railpack 的 install 阶段只放
+# package.json 与锁文件，拿不到 prisma/schema.prisma，靠 postinstall 生成不可靠。
+buildCommand = "bun run db:generate && bun run build"
+
+[deploy]
+# 构建完成之后、启动之前，在独立容器里执行；失败则部署中止，旧版本继续服务。
+# 迁移放这里，而不是启动命令里，避免每次重启都重复跑一遍。
+preDeployCommand = ["bun run db:migrate:deploy"]
+startCommand = "bun run start"
+healthcheckPath = "/api/health"
+healthcheckTimeout = 100
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 3

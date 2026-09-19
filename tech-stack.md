@@ -93,10 +93,10 @@ POST   /api/resumes/:id/versions
 GET    /api/resumes/:id/versions/:versionId
 POST   /api/resumes/:id/versions/:versionId/restore
 
-POST   /api/export/docx
+POST   /api/resumes/:id/export/docx
 ```
 
-路径从一开始就带 resume id，即使当前 UI 只有一份简历。这样将来加多简历功能时不必改动已有接口。
+路径一律带 resume id，多份简历各自独立。
 
 <br />
 

@@ -2,6 +2,7 @@ import { Router } from 'express'
 import { z } from 'zod'
 import { createEmptyResumeData, PHOTO, resumeDataSchema } from '@mymenu/shared'
 import { prisma } from '../db'
+import { buildResumeDocx } from '../docx'
 import { requireAuth } from '../require-auth'
 import { findOwnResume, parseResumeData } from '../resume-utils'
 import { versionsRouter } from './versions'
@@ -208,6 +209,39 @@ resumesRouter.post('/:id/photo', async (req, res) => {
   })
 
   res.json(photo)
+})
+
+/** 导出 docx。照片以 base64 内嵌进文档，不依赖任何外部链接。 */
+resumesRouter.post('/:id/export/docx', async (req, res) => {
+  const resume = await findOwnResume(req.params.id, req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
+
+  const photo = resume.photoId
+    ? await prisma.photo.findUnique({
+        where: { id: resume.photoId },
+        select: { data: true },
+      })
+    : null
+
+  const data = parseResumeData(resume.data)
+  const buffer = await buildResumeDocx(data, photo?.data ?? null)
+
+  // 文件名含姓名与日期；中文用 filename* 传，避免部分浏览器乱码
+  const name = data.basic.name.trim() || resume.title
+  const filename = `${name}-简历-${new Date().toISOString().slice(0, 10)}.docx`
+
+  res.setHeader(
+    'Content-Type',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+  )
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="resume.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  )
+  res.send(buffer)
 })
 
 // 版本相关路由挂在简历下

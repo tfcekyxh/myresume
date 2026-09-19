@@ -2,6 +2,7 @@ import { zodResolver } from '@hookform/resolvers/zod'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
 import { useResume } from '@/components/resume-gate'
+import { ExportDocxButton } from '@/components/export-docx-button'
 import { SaveVersionButton } from '@/components/save-version-button'
 import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
 import {
@@ -106,7 +107,10 @@ export function ResumeForm() {
       <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
         <div className="flex items-center justify-between gap-3">
           <SaveStatusBar status={saveStatus} />
-          <SaveVersionButton resumeId={resumeId} flushDraft={flushDraft} />
+          <div className="flex items-start gap-2">
+            <SaveVersionButton resumeId={resumeId} flushDraft={flushDraft} />
+            <ExportDocxButton resumeId={resumeId} flushDraft={flushDraft} />
+          </div>
         </div>
         <ErrorSummary />
         <BasicForm />

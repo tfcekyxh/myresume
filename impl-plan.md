@@ -251,7 +251,7 @@
 
 ## 阶段 E：版本记录
 
-### Step 12　前端：版本管理页
+### Step 12　前端：版本管理页　✅
 
 **目标**：存档、查看、恢复可操作。
 
@@ -271,7 +271,7 @@
 
 <br />
 
-### Step 13　后端：版本接口
+### Step 13　后端：版本接口　✅
 
 **目标**：存档、列表、查看、恢复四个动作可用。
 
@@ -279,7 +279,7 @@
 
 - `POST /api/resumes/:id/versions`：把当前 `data` 与 `photo_id` 存入快照，可带备注
 - `GET /api/resumes/:id/versions`：返回列表（时间 + 备注，不含快照本体）
-- `GET /api/resumes/:id/versions/:versionId`：返回单条快照内容与 `photo_id`
+- `GET /api/resumes/:id/versions/:versionId`：返回单条快照内容、`photo_id`，以及该版本当时的照片内容 `photo: { id, data } | null`（查看历史版本要显示当时的照片，一并返回省掉一次请求）
 - `POST /api/resumes/:id/versions/:versionId/restore`：用快照覆盖 `resumes.data`，并把 `photo_id` 指向该版本的 `photo_id`
 
 **验证**

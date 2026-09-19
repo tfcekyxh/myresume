@@ -13,6 +13,8 @@ const DEBOUNCE_MS = 1000
  *
  * 表单变化后 debounce 1s 整体 PATCH；页面隐藏或卸载时立刻补发一次，
  * 避免丢掉最后一秒的输入。
+ *
+ * 返回的 `flush` 用于「存档」这类需要确保改动已落库的操作。
  */
 export function useDraftAutosave(resumeId: string, form: UseFormReturn<ResumeData>) {
   const saveDraft = useSaveDraft()
@@ -85,5 +87,5 @@ export function useDraftAutosave(resumeId: string, form: UseFormReturn<ResumeDat
     }
   }, [resumeId])
 
-  return status
+  return { status, flush }
 }

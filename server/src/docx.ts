@@ -35,8 +35,8 @@ import {
 /**
  * 用 docx 库以代码构建简历文档。
  *
- * 排版数值全部取自 shared 的常量表，与 /preview 页共用同一份来源，
- * 避免两条渲染路径不一致。
+ * 排版数值全部取自 shared 的常量表，导出后由 Word 渲染，
+ * 是简历版式的唯一权威输出。
  */
 
 const hasText = (value: string | null | undefined): value is string =>

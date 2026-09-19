@@ -93,7 +93,7 @@
 - Tailwind CSS 接入（`@tailwindcss/vite`）
 - `tsconfig` 路径别名 `@/*` → `src/*`，Vite `resolve.alias` 同步
 - `shadcn init` 并按需 add 组件
-- React Router 路由：`/login`、`/edit`、`/preview`、`/versions`
+- React Router 路由：`/login`、`/edit`、`/versions`
 - TanStack Query Provider
 - `lib/api.ts`：统一 fetch 封装，自动带 cookie，非 2xx 抛 `ApiError`
 - `lib/auth.ts`：`useCurrentUser` / `useLogin` / `useLogout`
@@ -104,7 +104,7 @@
 **验证**
 
 - 各路由都能打开，样式正常
-- 未登录访问 `/edit`、`/versions`、`/preview` 会跳 `/login`
+- 未登录访问 `/edit`、`/versions` 会跳 `/login`
 - 表单空提交提示必填
 
 <br />
@@ -198,7 +198,7 @@
 
 **产出**
 
-- 路由 `/resumes`（列表）→ `/resumes/:resumeId/edit|versions|preview`，resume id 从 URL 取，ResumeGate 据此拉取并下发 context
+- 路由 `/resumes`（列表）→ `/resumes/:resumeId/edit|versions`，resume id 从 URL 取，ResumeGate 据此拉取并下发 context
 - 编辑页用该 id 初始化表单
 - 表单变化 debounce 1s 调 `PATCH /api/resumes/:id/draft`
 - `visibilitychange` / `pagehide` 时用 `fetch(..., { keepalive: true })` 补发（sendBeacon 只能发 POST，与 PATCH 接口不符）
@@ -294,22 +294,13 @@
 
 ## 阶段 F：导出与验收
 
-### Step 14　打印预览页　✅
+### Step 14　打印预览页　❌ 已回退
 
-**目标**：浏览器打印出的 PDF 与目标排版一致。
+**原目标**：浏览器打印出的 PDF 与目标排版一致。
 
-**产出**
+**回退原因**：浏览器渲染（字体、行距、分页）无法与 Word 对齐，等于长期维护两套渲染路径，且打印出的 PDF 效果不达预期。改为只保留 docx 一条输出：导出后用本机 Word/WPS 打开预览、另存为 PDF。
 
-- `/preview` 路由，渲染 A4 尺寸只读 DOM
-- 纯 HTML + Tailwind `print:` 变体，**不使用 shadcn 组件**
-- `@page { size: A4; margin: ... }`，`@media print` 隐藏导航等非内容元素
-- 样式值全部来自 Step 6 的常量表
-
-**验证**
-
-- 浏览器打印预览中分页正确，无按钮、导航等多余元素
-- 屏幕显示与打印结果一致
-- 照片位置与尺寸正确
+**回退内容**：删除 `/preview` 路由与页面、编辑页的「打印预览」按钮、`e2e/preview.spec.ts`，以及只为预览容器准备的 `RESUME_CSS_VARS`。`ResumeReadonly` 保留，供版本记录页查看历史快照。
 
 <br />
 
@@ -338,7 +329,7 @@
 
 **产出**
 
-- 走一遍完整链路：登录 → 填写 → 上传照片 → 自动保存 → 存档 → 改内容 → 恢复 → 导出 docx → 打印 PDF
+- 走一遍完整链路：登录 → 填写 → 上传照片 → 自动保存 → 存档 → 改内容 → 恢复 → 导出 docx → 用 Word 另存 PDF
 - 补齐加载态、错误提示、空状态
 - 启动说明（依赖安装、数据库、迁移、seed、开发与构建命令）
 

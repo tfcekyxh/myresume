@@ -16,8 +16,8 @@ import {
 /**
  * 简历只读渲染。
  *
- * 版本查看用它展示历史快照；打印预览页（Step 14）会复用同一套结构与样式常量。
- * 排版数值全部取自 shared 的常量，不在组件里写死。
+ * 版本记录页用它展示历史快照，只是屏幕上快速看一眼，版式不追求与导出的
+ * Word 完全一致；排版数值仍取自 shared 的常量，不在组件里写死。
  */
 
 const hasText = (value: string | null | undefined): value is string =>

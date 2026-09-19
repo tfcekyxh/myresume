@@ -1,11 +1,9 @@
 import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
-import { Printer } from 'lucide-react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
-import { Link } from 'react-router-dom'
 import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
 import { useResume } from '@/components/resume-gate'
-import { Button, buttonVariants } from '@/components/ui/button'
+import { Button } from '@/components/ui/button'
 import { ExportDocxButton } from '@/components/export-docx-button'
 import { SaveVersionButton } from '@/components/save-version-button'
 import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
@@ -190,12 +188,6 @@ export function ResumeForm() {
               flushDraft={flushDraft}
               buttonClassName="h-10 sm:h-8"
             />
-            <Link
-              to={`/resumes/${resumeId}/preview`}
-              className={buttonVariants({ variant: 'outline', className: 'h-10 sm:h-8' })}
-            >
-              <Printer /> 打印预览
-            </Link>
           </div>
         </div>
         <ErrorSummary />

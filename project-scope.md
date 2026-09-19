@@ -29,7 +29,7 @@
 | 样式 | 单一模板，1:1 复刻现有 Word 简历 |
 | 版本 | 编辑自动存草稿 + 手动存档版本，可回滚 |
 | 技术栈 | 见 tech-stack.md |
-| 导出 | docx 由后端生成；pdf 走浏览器打印，见 tech-stack.md |
+| 导出 | docx 由后端生成，用 Word/WPS 打开预览、另存 PDF，见 tech-stack.md |
 
 <br />
 

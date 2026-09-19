@@ -3,7 +3,6 @@ import { RequireAuth } from '@/components/require-auth'
 import { ResumeGate } from '@/components/resume-gate'
 import { EditPage } from '@/pages/edit'
 import { LoginPage } from '@/pages/login'
-import { PreviewPage } from '@/pages/preview'
 import { ResumeListPage } from '@/pages/resumes'
 import { VersionsPage } from '@/pages/versions'
 
@@ -17,7 +16,6 @@ export default function App() {
         <Route path="/resumes/:resumeId" element={<ResumeGate />}>
           <Route path="edit" element={<EditPage />} />
           <Route path="versions" element={<VersionsPage />} />
-          <Route path="preview" element={<PreviewPage />} />
         </Route>
       </Route>
       <Route path="*" element={<Navigate to="/resumes" replace />} />

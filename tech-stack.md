@@ -22,7 +22,7 @@
 | 鉴权 | express-session + connect-pg-simple（数据库 Session） |
 | 密码哈希 | `Bun.password`（内置 argon2id） |
 | docx 导出 | `docx` 库，代码构建 |
-| PDF 导出 | 浏览器 `window.print()` + Tailwind `print:` 变体 |
+| PDF 导出 | 不做服务端转换：导出 docx 后用本机 Word/WPS 打开、另存为 PDF |
 | 证件照 | base64 存 `photos` 表，简历与快照只存 `photo_id` 引用，不做文件服务 |
 | 工程结构 | Bun workspaces：`client/` + `server/` + `shared/` |
 
@@ -157,9 +157,9 @@ POST   /api/resumes/:id/export/docx
 
 ### PDF 导出
 
-- 走浏览器 `window.print()`，无服务端依赖。
-- 使用专用 `/preview` 路由渲染 A4 尺寸只读 DOM，**不使用组件库组件**，纯 HTML + Tailwind `print:` 变体。
-- 配 `@page { size: A4; margin: ... }`，`@media print` 下隐藏导航等非内容元素。
+- 不做服务端转换。浏览器渲染与 Word 排版无法对齐，因此不维护第二套渲染路径。
+- 流程：导出 docx → 用本机 Word / WPS 打开预览 → 另存为 PDF。
+- 若要改成服务端转换，需要 Dockerfile 装 LibreOffice（镜像 +600MB、转换吃 300MB 内存）并补齐中文字体，否则字体被静默替换，行宽与分页都会变。
 
 ### 证件照
 
@@ -167,7 +167,7 @@ POST   /api/resumes/:id/export/docx
 - 照片因此既不随版本重复存储，又仍然受版本控制：查看历史版本时按该版本的 `photo_id` 取图，恢复版本时照片一起回到当时那张。
 - 上传时前端必须先用 canvas 压缩，不存原图：按目标宽高比**居中裁剪（cover）**再缩放（不要直接拉伸，任意比例的输入会变形），转 JPEG base64，控制在 100 KB 以内。目标像素由显示尺寸与 300 DPI 推导（1.98 × 2.2 cm → 234 × 260），**不要用标准一寸照的 295×413**，那个比例 0.714 与 1.98:2.2 = 0.9 不符，插入后会横向拉伸。
 - 上传接口需比对内容（如比对 base64 哈希）与当前照片是否相同，相同则复用现有 `photo_id`，避免反复上传同一张图导致 `photos` 堆积。
-- docx 生成与 `/preview` 页渲染时，照片按 `photo_id` 单独读取后并入输出。
+- docx 生成时，照片按 `photo_id` 单独读取后并入输出。
 
 <br />
 

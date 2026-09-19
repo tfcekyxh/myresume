@@ -153,31 +153,3 @@ export const PHOTO = {
 /** 压缩后的目标像素尺寸，比例与显示尺寸一致。 */
 export const PHOTO_PIXEL_WIDTH = Math.round((PHOTO.displayWidthCm / 2.54) * PHOTO.dpi)
 export const PHOTO_PIXEL_HEIGHT = Math.round((PHOTO.displayHeightCm / 2.54) * PHOTO.dpi)
-
-// ---------- 前端 CSS 变量 ----------
-
-/**
- * 供前端把常量注入为 CSS 变量，在 A4 预览容器上 `style={RESUME_CSS_VARS}` 展开。
- * CSS 里只引用 `var(--resume-*)`，不写字面值。
- */
-export const RESUME_CSS_VARS = {
-  '--resume-page-width': `${PAGE.widthCm}cm`,
-  '--resume-page-height': `${PAGE.heightCm}cm`,
-  '--resume-font-family': FONT.webFamily,
-  '--resume-font-size-body': `${FONT_SIZE_PT.body}pt`,
-  '--resume-font-size-section-title': `${FONT_SIZE_PT.sectionTitle}pt`,
-  '--resume-font-size-item-title': `${FONT_SIZE_PT.itemTitle}pt`,
-  '--resume-font-size-footer': `${FONT_SIZE_PT.footer}pt`,
-  '--resume-line-height': `${LINE_SPACING}`,
-  '--resume-indent-body': `${INDENT.bodyCm}cm`,
-  '--resume-indent-list': `${INDENT.listCm}cm`,
-  '--resume-indent-list-hanging': `${INDENT.listHangingCm}cm`,
-  '--resume-color-body-text': COLOR.bodyText,
-  '--resume-color-section-title-text': COLOR.sectionTitleText,
-  '--resume-color-section-title-bg': COLOR.sectionTitleBackground,
-  '--resume-color-section-title-border': COLOR.sectionTitleBorder,
-  '--resume-color-time-text': COLOR.timeText,
-  '--resume-header-column-gap': `${HEADER.columnGapCm}cm`,
-  '--resume-photo-width': `${PHOTO.displayWidthCm}cm`,
-  '--resume-photo-height': `${PHOTO.displayHeightCm}cm`,
-} as const

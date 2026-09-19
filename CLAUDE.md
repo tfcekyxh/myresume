@@ -1,6 +1,6 @@
 # 项目约定
 
-简历 Web 应用：填表 → 自动存草稿 → 手动存版本 → 导出 docx / 浏览器打印 PDF。
+简历 Web 应用：填表 → 自动存草稿 → 手动存版本 → 导出 docx（用 Word 打开预览、另存 PDF）。
 
 ## 文档索引
 
@@ -21,7 +21,7 @@
 - 数据库：PostgreSQL（阿里云 RDS）
 - 鉴权：express-session + connect-pg-simple（数据库 Session）
 - 密码哈希：`Bun.password`（内置 argon2id）
-- 导出：`docx` 库代码构建；PDF 走浏览器打印
+- 导出：`docx` 库代码构建；版式由 Word 渲染，不在浏览器里复刻
 - 工程：Bun workspaces：`client/` + `server/` + `shared/`
 
 ## 目录结构
@@ -70,7 +70,8 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **编辑页表单**：单层 `useForm<ResumeData>` + `zodResolver(resumeDataSchema)`，用 `FormProvider` 下发，各模块组件通过 `useFormContext` 读写。可多条目模块用 `useFieldArray` + dnd-kit，拖拽结束调 `move()` 而非直接改数组。
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx 共同读取，禁止两侧硬编码。
-- **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`、`/preview`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
+- **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
+- **不做浏览器打印预览**：曾经的 `/preview` 路由已删除。版式只在 `server/docx.ts` 里实现一份，导出后由 Word 渲染；浏览器渲染无法与 Word 对齐，维护两套只会互相打架。要看效果就用 Word/WPS 打开导出的 docx。
 - **docx 导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
 
 ## 简历结构（模块顺序固定）
@@ -97,7 +98,7 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - 配置项 `reuseExistingServer: true`、`webServer.command: 'bun run dev'`：若 dev 已起则复用，否则自动拉起前后端。
 - **必须用专用测试账号**：默认 `e2e-tester` / `e2e-tester`，由 `e2e/global-setup.ts` 在跑测试前自动创建（可用 `E2E_USERNAME` / `E2E_PASSWORD` 覆盖）。用例的 `beforeEach` 会清空该账号的全部简历，**绝不能把账号指向真实用户**，否则一次 e2e 就会删掉真数据。
 - 断言 shadcn 的 `CardTitle` 时**勿用** `getByRole('heading')`：shadcn 渲染成 `div`，应改用 `getByText(...)`。
-- 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「打印预览」「返回编辑」。
+- 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「返回编辑」。
 - 登录后的公共步骤抽在 `e2e/helpers.ts`（`loginAsDefaultUser`），各 spec 复用。
 - 表单交互选择器：添加按钮用文案（如「添加教育经历」），条目内的删除与拖拽手柄用 aria-label（「删除：教育经历 1」「拖拽排序：教育经历 1」），字段用 `getByLabel('学校')` 并按 `first()` / `nth(i)` 定位。
 - 拖拽用鼠标拖拽（`boundingBox` + `mouse.move/down/up`）验证，键盘拖拽在 dnd-kit 下不可靠。

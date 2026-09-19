@@ -9,7 +9,7 @@ import {
 } from './helpers'
 
 test('未登录访问受保护页面会被重定向到登录页', async ({ page }) => {
-  for (const path of ['/resumes', '/resumes/abc/edit', '/resumes/abc/versions', '/resumes/abc/preview', '/']) {
+  for (const path of ['/resumes', '/resumes/abc/edit', '/resumes/abc/versions', '/']) {
     await page.goto(path)
 
     await expect(page).toHaveURL('/login')
@@ -72,7 +72,7 @@ test('登录默认进入最近编辑的简历', async ({ page }) => {
   await expect(page).toHaveURL(`/resumes/${edited}/edit`)
 })
 
-test('登录后可在编辑页与版本记录、打印预览之间导航', async ({ page }) => {
+test('登录后可在编辑页与版本记录之间导航', async ({ page }) => {
   await loginAsDefaultUser(page)
   await clearResumes()
   const resumeId = await createResume(page, '测试简历')
@@ -84,8 +84,4 @@ test('登录后可在编辑页与版本记录、打印预览之间导航', async
 
   await page.getByRole('link', { name: '正在编辑' }).click()
   await expect(page).toHaveURL(`/resumes/${resumeId}/edit`)
-
-  await page.getByRole('link', { name: '打印预览' }).click()
-  await expect(page).toHaveURL(`/resumes/${resumeId}/preview`)
-  await expect(page.getByRole('button', { name: '打印 / 导出 PDF' })).toBeVisible()
 })

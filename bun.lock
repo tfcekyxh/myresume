@@ -7,6 +7,9 @@
       "devDependencies": {
         "@mymenu/shared": "workspace:*",
         "@playwright/test": "^1.63.0",
+        "@prisma/adapter-pg": "^7.10.0",
+        "@prisma/client": "^7.10.0",
+        "dotenv": "^18.0.0",
       },
     },
     "client": {
@@ -76,8 +79,8 @@
     },
   },
   "trustedDependencies": [
-    "prisma",
     "@prisma/client",
+    "prisma",
   ],
   "packages": {
     "@babel/code-frame": ["@babel/code-frame@7.29.7", "https://registry.npmmirror.com/@babel/code-frame/-/code-frame-7.29.7.tgz", { "dependencies": { "@babel/helper-validator-identifier": "^7.29.7", "js-tokens": "^4.0.0", "picocolors": "^1.1.1" } }, "sha512-Aup7aUOfpbAUg2ROOJN6Iw5f9DMBlzu0mIkm/malLQFN/YQgO48wCj0Kxa3sEHJvPVFg7siR+qRInwXd2qhQKw=="],

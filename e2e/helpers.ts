@@ -14,7 +14,7 @@ export async function loginAsDefaultUser(page: Page) {
 }
 
 /** 取当前用户唯一那份简历的 id（须先登录，复用浏览器上下文的会话）。 */
-async function getCurrentResumeId(page: Page): Promise<string> {
+export async function getCurrentResumeId(page: Page): Promise<string> {
   const res = await page.request.get('/api/resumes/current')
   if (!res.ok()) throw new Error(`获取当前简历失败：${res.status()}`)
 
@@ -36,4 +36,17 @@ export async function setDraft(page: Page, data: ResumeData) {
 /** 把草稿重置为空（结构与 shared 的 createEmptyResumeData 一致）。 */
 export async function resetDraft(page: Page) {
   await setDraft(page, createEmptyResumeData())
+}
+
+/**
+ * 清掉当前用户的照片（把 resumes.photoId 置空，photos 行保留）。
+ *
+ * 照片会真实落库，且业务上没有删除照片的接口；不清的话，
+ * 前面用例上传过的照片会带进后面用例的编辑页，「未上传」断言会失败。
+ * 直接连库改，属于测试前置状态重置。
+ */
+export async function clearPhoto(page: Page) {
+  const id = await getCurrentResumeId(page)
+  const { clearResumePhoto } = await import('./db')
+  await clearResumePhoto(id)
 }

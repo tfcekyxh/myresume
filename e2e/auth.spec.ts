@@ -78,11 +78,11 @@ test('登录后可在编辑页与版本记录、打印预览之间导航', async
   const resumeId = await createResume(page, '测试简历')
   await openEdit(page, resumeId)
 
-  await page.getByRole('link', { name: '版本记录' }).click()
+  await page.getByRole('link', { name: '已归档的简历版本' }).click()
   await expect(page).toHaveURL(`/resumes/${resumeId}/versions`)
-  await expect(page.getByRole('heading', { name: '版本记录' })).toBeVisible()
+  await expect(page.getByText('已归档的简历版本')).toBeVisible()
 
-  await page.getByRole('link', { name: '返回编辑' }).click()
+  await page.getByRole('link', { name: '正在编辑' }).click()
   await expect(page).toHaveURL(`/resumes/${resumeId}/edit`)
 
   await page.getByRole('link', { name: '打印预览' }).click()

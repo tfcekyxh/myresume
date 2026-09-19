@@ -1,7 +1,9 @@
 import { useEffect } from 'react'
 import { Link } from 'react-router-dom'
-import { Button } from '@/components/ui/button'
+import { ArrowLeft } from 'lucide-react'
+import { Button, buttonVariants } from '@/components/ui/button'
 import { ResumeForm } from '@/components/resume-form'
+import { ResumeTabs } from '@/components/resume-tabs'
 import { useResume } from '@/components/resume-gate'
 import { useCurrentUser, useLogout } from '@/lib/auth'
 import { rememberLastResume } from '@/lib/last-resume'
@@ -27,13 +29,14 @@ export function EditPage() {
   return (
     <div className="mx-auto max-w-3xl p-8">
       <header className="flex items-center justify-between">
-        <div className="min-w-0">
+        <div className="flex min-w-0 items-center gap-3">
           <h1 className="truncate text-xl font-semibold">{title}</h1>
+          {/* 用按钮样式而不是纯文字链接，一眼能看出可点 */}
           <Link
             to="/resumes"
-            className="text-sm text-muted-foreground underline-offset-4 hover:underline"
+            className={buttonVariants({ variant: 'outline', size: 'sm' })}
           >
-            我的简历
+            <ArrowLeft /> 我的简历
           </Link>
         </div>
         <div className="flex shrink-0 items-center gap-3">
@@ -44,20 +47,7 @@ export function EditPage() {
         </div>
       </header>
 
-      <nav className="mt-4 flex gap-3">
-        <Link
-          to={`/resumes/${resumeId}/versions`}
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          版本记录
-        </Link>
-        <Link
-          to={`/resumes/${resumeId}/preview`}
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          打印预览
-        </Link>
-      </nav>
+      <ResumeTabs resumeId={resumeId} active="edit" />
 
       <section className="mt-8">
         <ResumeForm />

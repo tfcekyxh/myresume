@@ -53,7 +53,7 @@ export async function openEdit(page: Page, resumeId: string) {
 /** 直接跳到某份简历的版本页。 */
 export async function openVersions(page: Page, resumeId: string) {
   await page.goto(`/resumes/${resumeId}/versions`)
-  await expect(page.getByRole('heading', { name: '版本记录' })).toBeVisible()
+  await expect(page.getByText('已归档的简历版本')).toBeVisible()
 }
 
 /** 对指定简历写草稿（构造前置数据）。 */

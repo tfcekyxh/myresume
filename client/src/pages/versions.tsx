@@ -1,7 +1,7 @@
 import { useState } from 'react'
-import { Link } from 'react-router-dom'
 import { Eye, RotateCcw, Trash2 } from 'lucide-react'
 import { ResumeReadonly } from '@/components/resume-readonly'
+import { ResumeTabs } from '@/components/resume-tabs'
 import { useResume } from '@/components/resume-gate'
 import {
   AlertDialog,
@@ -85,7 +85,7 @@ function ViewDialog({
 }
 
 export function VersionsPage() {
-  const { resumeId } = useResume()
+  const { resumeId, title } = useResume()
   const { data: resume } = useResumeDetail(resumeId)
   const { data: versions, isPending } = useVersions(resumeId)
   const restore = useRestoreVersion(resumeId)
@@ -115,14 +115,10 @@ export function VersionsPage() {
   return (
     <div className="mx-auto max-w-3xl p-8">
       <header className="flex items-center justify-between">
-        <h1 className="text-xl font-semibold">版本记录</h1>
-        <Link
-          to={`/resumes/${resumeId}/edit`}
-          className="text-sm text-primary underline-offset-4 hover:underline"
-        >
-          返回编辑
-        </Link>
+        <h1 className="truncate text-xl font-semibold">{title}</h1>
       </header>
+
+      <ResumeTabs resumeId={resumeId} active="versions" />
 
       <ul className="mt-6 space-y-2">
         {/* 草稿是正在编辑的工作区，不是历史版本，所以只读展示、不提供恢复 */}

@@ -3,6 +3,7 @@ import type { NextFunction, Request, Response } from 'express'
 import { RESUME_MODULE_ORDER } from '@mymenu/shared'
 import { PORT } from './env'
 import { authRouter } from './routes/auth'
+import { resumesRouter } from './routes/resumes'
 import { sessionMiddleware } from './session'
 
 const app = express()
@@ -16,6 +17,7 @@ app.get('/api/health', (_req, res) => {
 })
 
 app.use('/api/auth', authRouter)
+app.use('/api/resumes', resumesRouter)
 
 app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
   console.error(err)

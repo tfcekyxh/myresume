@@ -1,9 +1,14 @@
 import { expect, test } from '@playwright/test'
-import { loginAsDefaultUser } from './helpers'
+import { loginAsDefaultUser, resetDraft } from './helpers'
+
+// 草稿会落库，用例之间必须从同一份空草稿开始，否则前面用例的内容会残留进来
+test.beforeEach(async ({ page }) => {
+  await loginAsDefaultUser(page)
+  await resetDraft(page)
+  await page.reload()
+})
 
 test('简历表单可填写基本信息', async ({ page }) => {
-  await loginAsDefaultUser(page)
-
   await expect(page.getByRole('heading', { name: '编辑简历' })).toBeVisible()
   await expect(page.getByText('基本信息', { exact: true })).toBeVisible()
   await expect(page.getByText('教育经历', { exact: true })).toBeVisible()
@@ -14,8 +19,6 @@ test('简历表单可填写基本信息', async ({ page }) => {
 })
 
 test('可新增并删除教育经历条目', async ({ page }) => {
-  await loginAsDefaultUser(page)
-
   await page.getByRole('button', { name: '添加教育经历' }).click()
   await expect(page.getByLabel('学校')).toHaveCount(1)
 
@@ -31,8 +34,6 @@ test('可新增并删除教育经历条目', async ({ page }) => {
 })
 
 test('工作经历可添加要点并可增删要点', async ({ page }) => {
-  await loginAsDefaultUser(page)
-
   await page.getByRole('button', { name: '添加工作经历' }).click()
   await page.getByLabel('公司').fill('某科技公司')
 
@@ -49,8 +50,6 @@ test('工作经历可添加要点并可增删要点', async ({ page }) => {
 })
 
 test('拖拽可调整条目顺序，表单值顺序与界面一致', async ({ page }) => {
-  await loginAsDefaultUser(page)
-
   const add = page.getByRole('button', { name: '添加教育经历' })
   await add.click()
   await add.click()

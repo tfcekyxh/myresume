@@ -63,7 +63,7 @@ bun run test:e2e:ui      # 可视化 UI 模式
 
 ## 关键实现约定
 
-- **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`pagehide` 时用 `sendBeacon` 补发。
+- **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`visibilitychange`（hidden）与 `pagehide` 时用 `fetch(..., { keepalive: true })` 立即补发一次（sendBeacon 只能发 POST，与 PATCH 接口不符）。
 - **版本**：点「存档」生成只读快照；恢复 = 覆盖当前草稿，不做 diff、不生成新版本。照片跟随版本（`resume_versions.photo_id`）。
 - **照片**：base64 存独立 `photos` 表，简历与快照只存 `photo_id` 引用；`photos` 只增不删。前端必须压缩后再传。
 - **简历结构**：只定义一份 zod schema 于 `shared/`，前端表单、后端校验、docx 生成三处复用。

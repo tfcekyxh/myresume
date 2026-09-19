@@ -108,7 +108,7 @@ POST   /api/export/docx
 
 - 草稿权威存储在服务端，前端不做持久化。
 - 编辑时 debounce 1s 整体 `PATCH /api/resumes/:id/draft`，提交完整 JSON，整份覆盖。
-- `visibilitychange` / `pagehide` 时用 `navigator.sendBeacon` 立即补发一次，避免丢失最后一秒输入。
+- `visibilitychange`（hidden）/ `pagehide` 时用 `fetch(..., { keepalive: true })` 立即补发一次，避免丢失最后一秒输入。不用 `navigator.sendBeacon`，因为它只能发 POST，而草稿接口是 PATCH。
 - 照片不走草稿接口：上传单独走 `POST /api/resumes/:id/photo`，服务端插入 `photos` 行并更新 `resumes.photo_id`。若新照片与当前照片内容相同则不插入新行。
 
 ### 版本

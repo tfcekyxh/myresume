@@ -1,6 +1,8 @@
 import { zodResolver } from '@hookform/resolvers/zod'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
-import { createEmptyResumeData, resumeDataSchema, type ResumeData } from '@mymenu/shared'
+import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
+import { useResume } from '@/components/resume-gate'
+import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
 import {
   BasicForm,
   EducationForm,
@@ -10,6 +12,27 @@ import {
   SkillsForm,
   WorkForm,
 } from './modules'
+import { cn } from 'cn'
+
+const SAVE_STATUS_TEXT: Record<SaveStatus, string> = {
+  idle: '',
+  saving: '保存中…',
+  saved: '已保存',
+  error: '保存失败，下次修改时会重试',
+}
+
+function SaveStatusBar({ status }: { status: SaveStatus }) {
+  if (status === 'idle') return null
+
+  return (
+    <p
+      data-testid="save-status"
+      className={cn('text-sm', status === 'error' ? 'text-destructive' : 'text-muted-foreground')}
+    >
+      {SAVE_STATUS_TEXT[status]}
+    </p>
+  )
+}
 
 /** 递归收集校验错误，拼成「字段路径：消息」。 */
 function collectMessages(errors: Record<string, unknown>, prefix = ''): string[] {
@@ -63,19 +86,24 @@ function DebugPanel() {
 /**
  * 简历编辑表单。
  *
- * 本阶段由组件本地状态驱动，不调后端；Step 9 再接草稿读写接口。
+ * 用 ResumeGate 取到的草稿内容初始化，改动 debounce 1s 自动落库。
  * 校验直接用 shared 的 schema，保证与后端入参校验同一份定义。
  */
 export function ResumeForm() {
+  const { resumeId, initialData } = useResume()
+
   const form = useForm<ResumeData>({
     resolver: zodResolver(resumeDataSchema),
-    defaultValues: createEmptyResumeData(),
+    defaultValues: initialData,
     mode: 'onBlur',
   })
+
+  const saveStatus = useDraftAutosave(resumeId, form)
 
   return (
     <FormProvider {...form}>
       <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+        <SaveStatusBar status={saveStatus} />
         <ErrorSummary />
         <BasicForm />
         <EducationForm />

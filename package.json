@@ -22,6 +22,7 @@
     "prisma"
   ],
   "devDependencies": {
+    "@mymenu/shared": "workspace:*",
     "@playwright/test": "^1.63.0"
   }
 }

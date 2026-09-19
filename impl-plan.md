@@ -188,7 +188,7 @@
 
 <br />
 
-### Step 9　前端：草稿加载与自动保存
+### Step 9　前端：草稿加载与自动保存　✅
 
 **依赖**：Step 7 的表单、Step 8 的接口。
 
@@ -199,7 +199,7 @@
 - 守卫通过后取 `GET /api/resumes/current`，把 resume id 存入 context，供后续所有带 `:id` 的接口使用
 - 编辑页用该 id 初始化表单
 - 表单变化 debounce 1s 调 `PATCH /api/resumes/:id/draft`
-- `visibilitychange` / `pagehide` 时用 `navigator.sendBeacon` 补发
+- `visibilitychange` / `pagehide` 时用 `fetch(..., { keepalive: true })` 补发（sendBeacon 只能发 POST，与 PATCH 接口不符）
 - 界面显示保存状态（保存中 / 已保存 / 失败）
 
 **验证**

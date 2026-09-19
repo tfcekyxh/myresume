@@ -44,6 +44,8 @@ export function useCreateVersion(resumeId: string) {
       }),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: versionsKey(resumeId) })
+      // 存档会刷新草稿的「已存档」基准，版本页的标签依赖它
+      void queryClient.invalidateQueries({ queryKey: resumeKey(resumeId) })
     },
   })
 }

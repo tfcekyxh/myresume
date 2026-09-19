@@ -27,6 +27,18 @@ function findOwnVersion(resumeId: string, versionId: string) {
   })
 }
 
+/**
+ * 把草稿的「已存档」基准对齐到它当前的 updatedAt，表示此刻的草稿已存在于版本中。
+ *
+ * 必须走原生 SQL：`updatedAt` 带 @updatedAt，任何 Prisma update 都会把它刷新成当前时间，
+ * 那样基准会永远比 updatedAt 早一点点，草稿就永远显示「未存档」。
+ */
+function markDraftArchived(resumeId: string) {
+  return prisma.$executeRaw`
+    UPDATE "Resume" SET "lastArchivedAt" = "updatedAt" WHERE "id" = ${resumeId}
+  `
+}
+
 versionsRouter.get('/', async (req, res) => {
   const resume = await findOwnResume(parentResumeId(req), req.session.userId!)
   if (!resume) {
@@ -67,6 +79,9 @@ versionsRouter.post('/', async (req, res) => {
     },
     select: { id: true, note: true, createdAt: true },
   })
+
+  // 快照就是此刻的草稿，所以把基准对齐到当前 updatedAt：之后有改动才算未存档
+  await markDraftArchived(resume.id)
 
   res.json(version)
 })
@@ -125,6 +140,9 @@ versionsRouter.post('/:versionId/restore', async (req, res) => {
     },
     select: { id: true, updatedAt: true },
   })
+
+  // 恢复后的草稿与某版本内容一致，算作已存档；之后有改动才会再标未存档。
+  await markDraftArchived(resume.id)
 
   res.json(updated)
 })

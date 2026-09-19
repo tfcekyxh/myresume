@@ -8,6 +8,8 @@ export type ResumeRecord = {
   data: ResumeData
   photoId: string | null
   updatedAt: string
+  /** 草稿最近一次被存档时的 updatedAt；为 null 或早于 updatedAt 即说明有未存档改动 */
+  lastArchivedAt: string | null
 }
 
 export type ResumeListItem = {

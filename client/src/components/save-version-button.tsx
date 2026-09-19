@@ -33,7 +33,7 @@ export function SaveVersionButton({ resumeId, flushDraft }: Props) {
 
   return (
     <>
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+      <Button variant="outline" onClick={() => setOpen(true)}>
         <Archive /> 存档
       </Button>
 

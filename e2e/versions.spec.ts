@@ -2,6 +2,7 @@ import { expect, test, type Page } from '@playwright/test'
 import { createEmptyResumeData } from '@mymenu/shared'
 import {
   getCurrentResumeId,
+  openEdit,
   openVersions,
   setDraft,
   setupResumeForEdit,
@@ -12,8 +13,8 @@ import { disconnectDb } from './db'
  * 版本管理页（存档 / 列表 / 查看 / 恢复），走真实接口。
  *
  * 定稿语义：草稿是唯一工作区，自动保存只覆盖草稿；版本是只读快照，只在「存档」
- * 时产生，之后内容永不改变。列表顶部固定有一条「当前草稿」条目（未存档），
- * 只读展示、可查看但不可恢复。
+ * 时产生，之后内容永不改变。列表顶部固定有一条「当前草稿」条目，只读展示、
+ * 可查看但不可恢复，标签按草稿是否晚于最近一次存档显示「未存档 / 已存档」。
  * 每个用例从「只有一份干净简历」出发，版本与照片天然为空。
  */
 
@@ -163,6 +164,27 @@ test('顶部「当前草稿」条目只读，查看显示最新草稿与照片',
     'src',
     `data:image/jpeg;base64,${photo}`
   )
+})
+
+test('草稿标签按是否晚于最近一次存档显示未存档/已存档', async ({ page }) => {
+  const resumeId = await getCurrentResumeId(page)
+  const draftItem = page.getByRole('listitem').filter({ hasText: '当前草稿' })
+
+  // 从未存档过
+  await goVersions(page)
+  await expect(draftItem.getByTestId('draft-badge')).toHaveText('未存档')
+
+  await openEdit(page, resumeId)
+  await saveVersionViaUi(page, '存档版本')
+
+  await goVersions(page)
+  await expect(draftItem.getByTestId('draft-badge')).toHaveText('已存档')
+
+  await openEdit(page, resumeId)
+  await editNameAndWaitSaved(page, '存档后又改')
+
+  await goVersions(page)
+  await expect(draftItem.getByTestId('draft-badge')).toHaveText('未存档')
 })
 
 test('存档后继续编辑，历史版本内容不变而当前草稿是最新', async ({ page }) => {

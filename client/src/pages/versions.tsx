@@ -16,7 +16,7 @@ import {
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { usePhoto } from '@/lib/photo'
-import { useResumeDetail } from '@/lib/resume'
+import { useResumeDetail, type ResumeRecord } from '@/lib/resume'
 import { useRestoreVersion, useVersion, useVersions } from '@/lib/versions'
 
 function formatTime(iso: string) {
@@ -31,6 +31,12 @@ function formatTime(iso: string) {
 
 /** 正在查看的目标：当前草稿，或某条历史版本。 */
 type Viewing = { kind: 'draft' } | { kind: 'version'; id: string } | null
+
+/** 草稿最后保存时间晚于最近一次存档时间，说明存档之后又有改动。 */
+function hasUnsavedChanges(resume: ResumeRecord | undefined) {
+  if (!resume?.lastArchivedAt) return true
+  return new Date(resume.updatedAt) > new Date(resume.lastArchivedAt)
+}
 
 /** 查看弹窗：草稿直接渲染，历史版本先拉快照。 */
 function ViewDialog({
@@ -59,7 +65,7 @@ function ViewDialog({
         <DialogHeader>
           <DialogTitle>
             {isDraft
-              ? '当前草稿（未存档）'
+              ? `当前草稿（${hasUnsavedChanges(resume) ? '未存档' : '已存档'}）`
               : version
                 ? `版本快照 · ${formatTime(version.createdAt)}`
                 : '版本快照'}
@@ -87,6 +93,9 @@ export function VersionsPage() {
   const [viewing, setViewing] = useState<Viewing>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
 
+  // 草稿最后保存时间晚于最近一次存档时间，说明存档后又有改动
+  const draftDirty = hasUnsavedChanges(resume)
+
   async function handleRestore() {
     if (!restoringId) return
     await restore.mutateAsync(restoringId)
@@ -113,8 +122,15 @@ export function VersionsPage() {
           <div className="min-w-0">
             <p className="flex items-center gap-2 text-sm">
               当前草稿
-              <span className="rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">
-                未存档
+              <span
+                data-testid="draft-badge"
+                className={
+                  draftDirty
+                    ? 'rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground'
+                    : 'rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground'
+                }
+              >
+                {draftDirty ? '未存档' : '已存档'}
               </span>
             </p>
             <p className="truncate text-xs text-muted-foreground">

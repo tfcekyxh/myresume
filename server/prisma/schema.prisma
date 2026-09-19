@@ -26,6 +26,8 @@ model Resume {
   photos    Photo[]         @relation("ResumePhotos")
   versions  ResumeVersion[]
   updatedAt DateTime        @updatedAt
+  /// 草稿最近一次被存档时的 updatedAt；比 updatedAt 旧即说明有未存档改动
+  lastArchivedAt DateTime?
 
   @@index([userId])
 }

@@ -70,6 +70,7 @@ resumesRouter.get('/:id', async (req, res) => {
     data: parseResumeData(resume.data),
     photoId: resume.photoId,
     updatedAt: resume.updatedAt,
+    lastArchivedAt: resume.lastArchivedAt,
   })
 })
 

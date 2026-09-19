@@ -97,14 +97,19 @@ function sectionTitle(text: string) {
   })
 }
 
-/** 十进制编号的要点列表。 */
-function pointParagraphs(points: string[]) {
+/**
+ * 十进制编号的要点列表。
+ *
+ * instance 让每条经历用自己的编号实例，编号各自从 1 开始；
+ * 共用同一个 reference 的话，Word 会把全文的要点连起来数成 1…N。
+ */
+function pointParagraphs(points: string[], instance: number) {
   return points
     .filter(hasText)
     .map(
       (point) =>
         new Paragraph({
-          numbering: { reference: 'resume-points', level: 0 },
+          numbering: { reference: 'resume-points', level: 0, instance },
           spacing: { line: lineSpacingToDocxLine(LINE_SPACING) },
           children: [bodyRun(point)],
         })
@@ -127,21 +132,21 @@ function itemHeader(title: string, period?: string) {
   }
 
   return paragraph(runs, {
-    tabStops: [{ type: 'right', position: cmToTwips(PAGE.widthCm - PAGE.marginCm * 2 - INDENT.bodyCm * 2) }],
+    tabStops: [{ type: 'right', position: cmToTwips(PAGE.widthCm - PAGE.marginLeftCm - PAGE.marginRightCm - INDENT.bodyCm * 2) }],
   })
 }
 
-function experienceBlocks(item: ExperienceItem) {
+function experienceBlocks(item: ExperienceItem, instance: number) {
   const heading = [item.role, item.company].filter(hasText).join(' · ')
   const blocks = [itemHeader(heading, item.period)]
 
   if (hasText(item.summary)) blocks.push(paragraph([bodyRun(item.summary ?? '')]))
-  blocks.push(...pointParagraphs(item.points))
+  blocks.push(...pointParagraphs(item.points, instance))
 
   return blocks
 }
 
-function projectBlocks(item: ProjectItem) {
+function projectBlocks(item: ProjectItem, instance: number) {
   const blocks = [itemHeader(item.name, item.period)]
 
   if (hasText(item.description)) blocks.push(paragraph([bodyRun(item.description)]))
@@ -150,7 +155,7 @@ function projectBlocks(item: ProjectItem) {
       paragraph([bodyRun('技术栈：', { bold: true }), bodyRun(item.techStack)])
     )
   }
-  blocks.push(...pointParagraphs(item.points))
+  blocks.push(...pointParagraphs(item.points, instance))
 
   return blocks
 }
@@ -192,7 +197,7 @@ function headerTable(data: ResumeData, photoBase64: string | null) {
   return new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
     borders: NO_BORDERS,
-    columnWidths: [cmToTwips(PAGE.widthCm - PAGE.marginCm * 2 - PHOTO.displayWidthCm - 0.3), cmToTwips(PHOTO.displayWidthCm + 0.3)],
+    columnWidths: [cmToTwips(PAGE.widthCm - PAGE.marginLeftCm - PAGE.marginRightCm - PHOTO.displayWidthCm - 0.3), cmToTwips(PHOTO.displayWidthCm + 0.3)],
     rows: [
       new TableRow({
         children: [
@@ -206,6 +211,9 @@ function headerTable(data: ResumeData, photoBase64: string | null) {
 
 function buildChildren(data: ResumeData, photoBase64: string | null) {
   const children: (Paragraph | Table)[] = [headerTable(data, photoBase64)]
+
+  // 每条经历的要点用独立的编号实例，编号从 1 重新开始
+  let numberingInstance = 1
 
   if (data.education.length > 0) {
     children.push(sectionTitle('教育经历'))
@@ -226,17 +234,18 @@ function buildChildren(data: ResumeData, photoBase64: string | null) {
 
   if (data.work.length > 0) {
     children.push(sectionTitle('工作经历'))
-    for (const item of data.work) children.push(...experienceBlocks(item))
+    for (const item of data.work) children.push(...experienceBlocks(item, numberingInstance++))
   }
 
   if (data.internship.length > 0) {
     children.push(sectionTitle('实习经历'))
-    for (const item of data.internship) children.push(...experienceBlocks(item))
+    for (const item of data.internship)
+      children.push(...experienceBlocks(item, numberingInstance++))
   }
 
   if (data.projects.length > 0) {
     children.push(sectionTitle('项目经历'))
-    for (const item of data.projects) children.push(...projectBlocks(item))
+    for (const item of data.projects) children.push(...projectBlocks(item, numberingInstance++))
   }
 
   if (hasText(data.footer)) {
@@ -287,10 +296,11 @@ export async function buildResumeDocx(
               height: cmToTwips(PAGE.heightCm),
             },
             margin: {
-              top: cmToTwips(PAGE.marginCm),
-              right: cmToTwips(PAGE.marginCm),
-              bottom: cmToTwips(PAGE.marginCm),
-              left: cmToTwips(PAGE.marginCm),
+              top: cmToTwips(PAGE.marginTopCm),
+              right: cmToTwips(PAGE.marginRightCm),
+              bottom: cmToTwips(PAGE.marginBottomCm),
+              left: cmToTwips(PAGE.marginLeftCm),
+              footer: cmToTwips(PAGE.footerDistanceCm),
             },
           },
         },

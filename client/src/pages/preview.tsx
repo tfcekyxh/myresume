@@ -26,13 +26,17 @@ export function PreviewPage() {
   const pageVars = {
     '--page-width': `${PAGE.widthCm}cm`,
     '--page-height': `${PAGE.heightCm}cm`,
-    '--page-margin': `${PAGE.marginCm}cm`,
+    '--page-margin-y': `${PAGE.marginTopCm}cm`,
+    '--page-margin-x': `${PAGE.marginLeftCm}cm`,
   } as CSSProperties
 
   return (
     <>
       {/* @page 的数值没法从 CSS 变量取，运行时按常量注入 */}
-      <style>{`@page { size: A4; margin: ${PAGE.marginCm}cm; }`}</style>
+      <style>{`@page {
+        size: A4;
+        margin: ${PAGE.marginTopCm}cm ${PAGE.marginRightCm}cm ${PAGE.marginBottomCm}cm ${PAGE.marginLeftCm}cm;
+      }`}</style>
 
       <div className="flex items-center justify-between gap-3 border-b bg-background px-6 py-3 print:hidden">
         <Link
@@ -42,7 +46,7 @@ export function PreviewPage() {
           返回编辑
         </Link>
         <p className="text-xs text-muted-foreground">
-          A4 · 页边距 {PAGE.marginCm}cm · 在打印对话框里选「另存为 PDF」
+          A4 · 页边距 {PAGE.marginLeftCm}cm · 在打印对话框里选「另存为 PDF」
         </p>
         <button
           type="button"
@@ -58,7 +62,7 @@ export function PreviewPage() {
           style={pageVars}
           className="mx-auto w-(--page-width) min-h-(--page-height) bg-white shadow-sm print:w-auto print:min-h-0 print:shadow-none"
         >
-          <div className="p-(--page-margin) print:p-0">
+          <div className="p-(--page-margin-y) px-(--page-margin-x) print:p-0">
             <ResumeReadonly data={resume.data} photoBase64={photo?.data ?? null} />
           </div>
         </div>

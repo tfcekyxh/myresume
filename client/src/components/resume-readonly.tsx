@@ -82,8 +82,8 @@ function Points({ points }: { points: string[] }) {
     <ol
       className="list-decimal space-y-0.5"
       style={{
+        // 与 docx 一致：编号顶格，列表正文缩进 listCm
         paddingLeft: `${INDENT.listCm}cm`,
-        marginLeft: `${INDENT.listHangingCm}cm`,
       }}
     >
       {items.map((point, index) => (

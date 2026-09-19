@@ -42,8 +42,11 @@ export const PAGE = {
   /** A4 */
   widthCm: 21,
   heightCm: 29.7,
-  /** 上下左右页边距一致 */
-  marginCm: 1.3,
+  /** 页边距：四边一致，1.5cm */
+  marginTopCm: 1.5,
+  marginBottomCm: 1.5,
+  marginLeftCm: 1.5,
+  marginRightCm: 1.5,
   /** 页脚距页面底边 */
   footerDistanceCm: 2.6,
 } as const
@@ -69,11 +72,11 @@ export const LINE_SPACING = 1.1
 // ---------- 缩进 ----------
 
 export const INDENT = {
-  /** 正文段落左右缩进 */
-  bodyCm: 0.35,
-  /** 要点列表左缩进 */
-  listCm: 0.7,
-  /** 要点列表悬挂缩进 */
+  /** 正文段落左右缩进：0 表示顶格 */
+  bodyCm: 0,
+  /** 要点列表正文缩进 */
+  listCm: 0.35,
+  /** 要点列表悬挂缩进：与 listCm 相等，编号才能顶格 */
   listHangingCm: 0.35,
 } as const
 
@@ -158,7 +161,6 @@ export const PHOTO_PIXEL_HEIGHT = Math.round((PHOTO.displayHeightCm / 2.54) * PH
 export const RESUME_CSS_VARS = {
   '--resume-page-width': `${PAGE.widthCm}cm`,
   '--resume-page-height': `${PAGE.heightCm}cm`,
-  '--resume-page-margin': `${PAGE.marginCm}cm`,
   '--resume-font-family': FONT.webFamily,
   '--resume-font-size-body': `${FONT_SIZE_PT.body}pt`,
   '--resume-font-size-section-title': `${FONT_SIZE_PT.sectionTitle}pt`,

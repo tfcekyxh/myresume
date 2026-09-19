@@ -110,11 +110,13 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **静态托管仅在生产生效**（`NODE_ENV=production`）：`express.static` + SPA fallback。开发期前端仍由 Vite dev server 提供，访问 `:3000` 不会看到过期构建。
 - **SPA fallback 只对无扩展名路径生效**：`/resumes/:id/edit` 这类深链刷新要回 `index.html`；但缺失的 `/assets/*.js` 必须保持 404，回 HTML 会让浏览器按 JS 解析报错。`/api` 的 404 也不能被吞掉。
 - **`app.set('trust proxy', 1)` 仅生产启用**：平台在边缘终止 TLS，不信任代理时 `req.secure` 恒为 false，`secure` cookie 不下发，表现为「登录成功却立刻掉线」。本地验证时需带 `X-Forwarded-Proto: https` 才会下发 cookie。
-- **配置在根 `railway.toml`**：build 阶段 `db:generate` + 前端构建；`preDeployCommand` 跑 `prisma migrate deploy`（失败则部署中止，旧版本继续服务）；`healthcheckPath` 为 `/api/health`。
-- **`startCommand` 不可省略**：Railpack 会自动把 Vite 产物识别成纯静态站点并改用 Caddy 托管，那样 Express 根本不启动、接口全挂。显式指定 start command 才能关掉该行为。
-- **环境变量**（平台服务变量）：`DATABASE_URL`（引用 Postgres 服务的 `${{Postgres.DATABASE_URL}}`）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`NODE_ENV=production`。`PORT` 由平台注入。
+- **部署配置在 Railway 面板，不放仓库**：Railway 的 Config as Code（`railway.toml` / `railway.json`）已废弃，**新服务无法启用**，只有旧服务仍会读取，且其优先级高于面板设置。因此不要提交这类文件，否则会静默压掉面板里的配置。面板路径：服务 → Settings → Build / Deploy。
+- **面板需要设置**：Build Command 为 `bun run db:generate && bun run build`；Pre-deploy Command 为 `bun run db:migrate:deploy`（迁移失败则部署中止，旧版本继续服务）；Start Command 为 `bun run start`；Healthcheck Path 为 `/api/health`。
+- **Start Command 必须显式指定**：Railpack 会自动把 Vite 产物识别成纯静态站点并改用 Caddy 托管，那样 Express 根本不启动、接口全挂。显式指定才能关掉该行为。
+- **环境变量**（面板服务变量）：`DATABASE_URL`（引用 Postgres 服务的 `${{Postgres.DATABASE_URL}}`）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`NODE_ENV=production`。`PORT` 由平台注入。
 - **`prisma` 与 `dotenv` 放在 `dependencies`（而非 devDependencies）**：`prisma.config.ts` 顶层 import 了 `dotenv`，且 `prisma migrate deploy` 要在 pre-deploy 阶段的应用镜像里可用。
 - **登录账号需手工 seed 一次**：`db:seed` 是按 username 幂等 upsert 且会更新密码，放进部署流程等于每次部署重置密码。
+- **迁移没跑的表现**：登录报 `P2021: The table public.User does not exist`，即 pre-deploy 未执行。注意 Railpack 会自动识别根 `package.json` 的 build/start 脚本，所以「部署成功、页面能打开」**不代表**迁移跑过。
 - e2e 跑的是开发模式，静态托管分支不会生效，因此该套件**不覆盖**生产托管与 SPA fallback——这部分靠本地生产模式启动 + 平台实测验证。
 
 ## Git

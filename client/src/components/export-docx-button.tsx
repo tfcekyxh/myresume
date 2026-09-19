@@ -6,10 +6,12 @@ type Props = {
   resumeId: string
   /** 先把未落库的草稿改动发出去，否则导出的可能是旧内容 */
   flushDraft: () => Promise<void>
+  /** 由调用方控制按钮尺寸等外观（手机端触控区更大） */
+  buttonClassName?: string
 }
 
 /** 请求导出 docx 并触发浏览器下载。带 loading 状态。 */
-export function ExportDocxButton({ resumeId, flushDraft }: Props) {
+export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Props) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -48,7 +50,13 @@ export function ExportDocxButton({ resumeId, flushDraft }: Props) {
 
   return (
     <div className="flex flex-col items-start gap-1">
-      <Button type="button" variant="outline" onClick={() => void handleExport()} disabled={pending}>
+      <Button
+        type="button"
+        variant="outline"
+        className={buttonClassName}
+        onClick={() => void handleExport()}
+        disabled={pending}
+      >
         <Download /> {pending ? '导出中…' : '导出 Word'}
       </Button>
       {error && <p className="text-xs text-destructive">{error}</p>}

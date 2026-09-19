@@ -93,16 +93,17 @@ export function SortableItem({ id, title, onRemove, children }: SortableItemProp
           {...attributes}
           {...listeners}
           aria-label={`拖拽排序：${title}`}
-          className="cursor-grab touch-none rounded text-muted-foreground hover:text-foreground active:cursor-grabbing"
+          // after 伪元素把热区撑到约 40px，手机上够点；不占布局尺寸，桌面渲染不变
+          className="relative cursor-grab touch-none rounded text-muted-foreground after:absolute after:-inset-3 hover:text-foreground active:cursor-grabbing"
         >
           <GripVertical className="size-4" />
         </button>
-        <span className="text-sm font-medium">{title}</span>
+        <span className="min-w-0 truncate text-sm font-medium">{title}</span>
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          className="ml-auto"
+          className="relative ml-auto after:absolute after:-inset-2"
           onClick={onRemove}
           aria-label={`删除：${title}`}
         >

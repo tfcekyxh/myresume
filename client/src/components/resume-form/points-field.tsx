@@ -52,6 +52,8 @@ export function PointsField({ name, label = '要点' }: PointsFieldProps) {
                 type="button"
                 variant="ghost"
                 size="icon-sm"
+                // -inset-1.5 而非 -2：热区往左扩 6px 就够到 40px，再多会压到左侧输入框
+                className="relative after:absolute after:-inset-1.5"
                 aria-label={`删除${label} ${index + 1}`}
                 onClick={() => update(points.filter((_, i) => i !== index))}
               >

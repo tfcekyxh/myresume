@@ -176,14 +176,23 @@ export function ResumeForm() {
   return (
     <FormProvider {...form}>
       <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
-        <div className="flex items-center justify-between gap-3">
+        {/* 手机上状态与按钮分两行：状态文案较长时与按钮同排必然横向溢出 */}
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <SaveStatusBar status={saveStatus} />
-          <div className="flex items-start gap-2">
-            <SaveVersionButton resumeId={resumeId} flushDraft={flushDraft} />
-            <ExportDocxButton resumeId={resumeId} flushDraft={flushDraft} />
+          <div className="flex flex-wrap items-center gap-2 sm:items-start">
+            <SaveVersionButton
+              resumeId={resumeId}
+              flushDraft={flushDraft}
+              buttonClassName="h-10 sm:h-8"
+            />
+            <ExportDocxButton
+              resumeId={resumeId}
+              flushDraft={flushDraft}
+              buttonClassName="h-10 sm:h-8"
+            />
             <Link
               to={`/resumes/${resumeId}/preview`}
-              className={buttonVariants({ variant: 'outline' })}
+              className={buttonVariants({ variant: 'outline', className: 'h-10 sm:h-8' })}
             >
               <Printer /> 打印预览
             </Link>

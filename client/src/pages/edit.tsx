@@ -27,21 +27,28 @@ export function EditPage() {
   }
 
   return (
-    <div className="mx-auto max-w-3xl p-8">
-      <header className="flex items-center justify-between">
-        <div className="flex min-w-0 items-center gap-3">
-          <h1 className="truncate text-xl font-semibold">{title}</h1>
-          {/* 用按钮样式而不是纯文字链接，一眼能看出可点 */}
-          <Link
-            to="/resumes"
-            className={buttonVariants({ variant: 'outline', size: 'sm' })}
+    <div className="mx-auto max-w-3xl px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom))] sm:p-8">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-2">
+        <h1 className="w-full min-w-0 truncate text-lg font-semibold sm:w-auto sm:text-xl">{title}</h1>
+        {/* 用按钮样式而不是纯文字链接，一眼能看出可点 */}
+        <Link
+          to="/resumes"
+          className={buttonVariants({
+            variant: 'outline',
+            size: 'sm',
+            className: 'h-10 shrink-0 sm:h-8',
+          })}
+        >
+          <ArrowLeft /> 我的简历
+        </Link>
+        <div className="ml-auto flex shrink-0 items-center gap-3">
+          <span className="hidden text-sm text-muted-foreground sm:inline">{user?.username}</span>
+          <Button
+            variant="outline"
+            className="h-10 shrink-0 sm:h-8"
+            onClick={handleLogout}
+            disabled={logout.isPending}
           >
-            <ArrowLeft /> 我的简历
-          </Link>
-        </div>
-        <div className="flex shrink-0 items-center gap-3">
-          <span className="text-sm text-muted-foreground">{user?.username}</span>
-          <Button variant="outline" onClick={handleLogout} disabled={logout.isPending}>
             登出
           </Button>
         </div>

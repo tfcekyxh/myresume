@@ -75,6 +75,7 @@ export function PhotoField() {
           <Button
             type="button"
             variant="outline"
+            className="h-10 sm:h-8"
             disabled={upload.isPending}
             onClick={() => inputRef.current?.click()}
           >

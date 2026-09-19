@@ -48,7 +48,7 @@ export function BasicForm() {
 
   return (
     <ModuleCard title="基本信息">
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         {BASIC_FIELDS.map(({ key, label }) => (
           <TextField
             key={key}
@@ -82,7 +82,7 @@ export function EducationForm() {
               title={`教育经历 ${index + 1}`}
               onRemove={() => remove(index)}
             >
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <TextField label="学校" placeholder="学校" {...register(`education.${index}.school`)} />
                 <TextField label="学历" placeholder="学历" {...register(`education.${index}.degree`)} />
                 <TextField label="专业" placeholder="专业" {...register(`education.${index}.major`)} />
@@ -159,12 +159,12 @@ function ExperienceForm({ module, title }: { module: ExperienceModule; title: st
               onRemove={() => remove(index)}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <TextField label="公司" placeholder="公司" {...register(`${module}.${index}.company`)} />
                   <TextField label="职位" placeholder="职位" {...register(`${module}.${index}.role`)} />
                   <TextField
                     label="起止时间"
-                    className="col-span-2"
+                    className="sm:col-span-2"
                     placeholder="如 2022.07 - 至今"
                     {...register(`${module}.${index}.period`)}
                   />
@@ -219,7 +219,7 @@ export function ProjectsForm() {
               onRemove={() => remove(index)}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
                   <TextField label="项目名称" placeholder="项目名称" {...register(`projects.${index}.name`)} />
                   <TextField
                     label="项目类型"

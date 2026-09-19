@@ -17,9 +17,11 @@ type Props = {
   resumeId: string
   /** 先把未落库的草稿改动发出去，否则快照可能是旧内容 */
   flushDraft: () => Promise<void>
+  /** 由调用方控制按钮尺寸等外观（手机端触控区更大） */
+  buttonClassName?: string
 }
 
-export function SaveVersionButton({ resumeId, flushDraft }: Props) {
+export function SaveVersionButton({ resumeId, flushDraft, buttonClassName }: Props) {
   const create = useCreateVersion(resumeId)
   const [open, setOpen] = useState(false)
   const [note, setNote] = useState('')
@@ -33,7 +35,7 @@ export function SaveVersionButton({ resumeId, flushDraft }: Props) {
 
   return (
     <>
-      <Button variant="outline" onClick={() => setOpen(true)}>
+      <Button variant="outline" className={buttonClassName} onClick={() => setOpen(true)}>
         <Archive /> 存档
       </Button>
 

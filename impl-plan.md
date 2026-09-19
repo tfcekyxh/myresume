@@ -19,11 +19,13 @@
 
 **已知缺陷**：现有 Word 简历中的证件照是外链（`file:///.../10MB.jpg`），docx 包里没有图片本体，发给别人会丢图。Step 15 实现导出时必须内嵌图片，不能沿用外链。
 
+**推进方式**：每个功能先做前端（页面与交互，能在浏览器里看到效果），再做后端接口与数据落库。接口契约以 `shared/` 的 zod schema 为准，前端先按契约调用，后端补齐时保持字段一致。所以同一功能的「前端 step → 后端 step」是紧邻的一对，前一步完成时页面可见但数据未落地，后一步完成后链路才通。
+
 <br />
 
-## 阶段 A：工程骨架与数据层
+## 阶段 A：工程骨架与数据层　（已完成）
 
-### Step 1　初始化 Bun workspaces
+### Step 1　初始化 Bun workspaces　✅
 
 **目标**：client / server / shared 三个包各自能跑起来。
 
@@ -43,13 +45,12 @@
 
 <br />
 
-### Step 2　数据库与 Prisma
+### Step 2　数据库与 Prisma　✅
 
 **目标**：四张业务表建好，预置账号可登录（此时还没有登录接口，只验证数据）。
 
 **产出**
 
-- `docker-compose.yml` 起本地 PostgreSQL 16，或使用本机实例
 - `prisma/schema.prisma` 定义 `User`、`Resume`、`Photo`、`ResumeVersion`
 - 首个 migration
 - `prisma/seed.ts`：用 `Bun.password.hash()` 写入预置账号
@@ -62,7 +63,7 @@
 
 <br />
 
-### Step 3　shared 层：简历 zod schema
+### Step 3　shared 层：简历 zod schema　✅
 
 **目标**：简历结构只定义一次，前后端与导出共用。
 
@@ -81,31 +82,95 @@
 
 <br />
 
-## 阶段 B：后端接口
+## 阶段 B：登录与会话　（已完成）
 
-### Step 4　鉴权
+### Step 4　前端：登录页与路由守卫　✅
 
-**目标**：能登录、能登出、受保护接口能拦住未登录请求。
+**目标**：登录页可访问、样式正常，未登录访问受保护页面会被拦下。
 
 **产出**
 
-- `express-session` + `connect-pg-simple` 接入，`createTableIfMissing: true`、`rolling: true`、30 天有效期
-- `POST /api/auth/login`：`Bun.password.verify()` 校验，写 `req.session.userId`
-- `POST /api/auth/logout`：`req.session.destroy()` + 清 cookie
-- `GET /api/auth/me`：返回当前用户
-- `requireAuth` 中间件
+- Tailwind CSS 接入（`@tailwindcss/vite`）
+- `tsconfig` 路径别名 `@/*` → `src/*`，Vite `resolve.alias` 同步
+- `shadcn init` 并按需 add 组件
+- React Router 路由：`/login`、`/edit`、`/preview`、`/versions`
+- TanStack Query Provider
+- `lib/api.ts`：统一 fetch 封装，自动带 cookie，非 2xx 抛 `ApiError`
+- `lib/auth.ts`：`useCurrentUser` / `useLogin` / `useLogout`
+- 登录页（shadcn + react-hook-form + zod）
+- 路由守卫：`GET /api/auth/me` 未通过则跳 `/login`
 - Vite `server.proxy` 把 `/api` 转发到 3000
 
 **验证**
 
-- `curl -c jar.txt -X POST localhost:3000/api/auth/login -d '{"username":"...","password":"..."}' -H 'Content-Type: application/json'` 返回 200 且 jar 中有 `connect.sid`
-- `curl -b jar.txt localhost:3000/api/auth/me` 返回用户信息
-- 不带 cookie 访问 `/api/auth/me` 返回 401
-- 登出后再访问返回 401
+- 各路由都能打开，样式正常
+- 未登录访问 `/edit`、`/versions`、`/preview` 会跳 `/login`
+- 表单空提交提示必填
 
 <br />
 
-### Step 5　草稿读写接口
+### Step 5　后端：鉴权接口　✅
+
+**目标**：登录链路完整跑通。
+
+**产出**
+
+- `express-session` + `connect-pg-simple` 接入，`createTableIfMissing: true`、`rolling: true`、30 天有效期
+- `POST /api/auth/login`：`Bun.password.verify()` 校验，登录后 `session.regenerate()` 防会话固定，再写 `req.session.userId`
+- `POST /api/auth/logout`：`req.session.destroy()` + 清 cookie
+- `GET /api/auth/me`：返回当前用户
+- `requireAuth` 中间件
+
+**验证**
+
+- 登录成功后进入 `/edit`，刷新页面仍保持登录
+- 密码错误提示「用户名或密码错误」，账号不存在返回同样的提示
+- 登出后回到 `/login`，且无法再访问受保护页面
+- `e2e/auth.spec.ts` 全部通过
+
+<br />
+
+## 阶段 C：简历编辑与草稿
+
+### Step 6　样式常量表　✅
+
+**目标**：把 Word 的排版参数抽成唯一数据源。
+
+**产出**
+
+- `shared/style-constants.ts`：字体族、各级字号、行距、段间距、页边距、模块间距
+- 供前端 CSS 变量与后端 docx 代码共同读取
+- 数值取 [tech-stack.md](./tech-stack.md) 的「样式来源」表，无需再解析 Word
+
+**验证**
+
+- 前端与后端均能引用，无重复定义
+- 改一个值，前端预览与 docx 输出同时变化
+
+<br />
+
+### Step 7　前端：编辑页表单与动态条目
+
+**依赖**：Step 3 的 schema、Step 6 的样式常量。
+
+**目标**：能完整填写简历，条目可增删拖拽。本步先用组件本地状态驱动表单，不调后端，方便先把界面调顺。
+
+**产出**
+
+- 按 schema 渲染各模块表单
+- 可多条目模块用 `useFieldArray` 实现增删
+- dnd-kit 拖拽排序，接 `useFieldArray` 的 `move()`
+- 基本信息含照片上传入口（Step 10 完成前先留占位）
+
+**验证**
+
+- 每个模块都能新增、删除、拖拽调整条目顺序
+- 必填项为空时给出校验提示
+- 拖拽后表单值顺序与界面一致
+
+<br />
+
+### Step 8　后端：草稿读写接口
 
 **目标**：草稿能存能取。
 
@@ -123,7 +188,48 @@
 
 <br />
 
-### Step 6　照片上传接口
+### Step 9　前端：草稿加载与自动保存
+
+**依赖**：Step 7 的表单、Step 8 的接口。
+
+**目标**：编辑页接上后端，输入不丢。
+
+**产出**
+
+- 守卫通过后取 `GET /api/resumes/current`，把 resume id 存入 context，供后续所有带 `:id` 的接口使用
+- 编辑页用该 id 初始化表单
+- 表单变化 debounce 1s 调 `PATCH /api/resumes/:id/draft`
+- `visibilitychange` / `pagehide` 时用 `navigator.sendBeacon` 补发
+- 界面显示保存状态（保存中 / 已保存 / 失败）
+
+**验证**
+
+- 修改内容后等 1 秒，刷新页面数据仍在
+- 修改内容后立刻关闭标签页，重新打开数据仍在
+- 断网时显示保存失败，恢复网络后能重试成功
+
+<br />
+
+## 阶段 D：证件照
+
+### Step 10　前端：照片上传与压缩
+
+**目标**：上传即压缩，避免存原图。
+
+**产出**
+
+- 文件选择后先用 canvas 缩放到 295×413 并转 JPEG base64（质量 0.85）
+- 调 `POST /api/resumes/:id/photo`，成功后更新预览
+- 展示当前照片，支持替换
+
+**验证**
+
+- 上传一张 3 MB 手机原图后，请求体中的 base64 在 100 KB 量级
+- 替换照片后编辑页预览同步更新
+
+<br />
+
+### Step 11　后端：照片上传接口
 
 **目标**：照片单独入库，重复上传不产生新行。
 
@@ -141,125 +247,9 @@
 
 <br />
 
-### Step 7　版本接口
+## 阶段 E：版本记录
 
-**目标**：存档、列表、查看、恢复四个动作可用。
-
-**产出**
-
-- `POST /api/resumes/:id/versions`：把当前 `data` 与 `photo_id` 存入快照，可带备注
-- `GET /api/resumes/:id/versions`：返回列表（时间 + 备注，不含快照本体）
-- `GET /api/resumes/:id/versions/:versionId`：返回单条快照内容与 `photo_id`
-- `POST /api/resumes/:id/versions/:versionId/restore`：用快照覆盖 `resumes.data`，并把 `photo_id` 指向该版本的 `photo_id`
-
-**验证**
-
-- 存档 → 修改草稿 → 恢复 → 草稿回到快照内容，`photo_id` 也回到当时的值
-- 恢复不产生新版本，版本数量不变
-- 恢复后旧照片行仍在 `photos` 中（历史版本靠它取图）
-
-<br />
-
-## 阶段 C：前端
-
-### Step 8　前端骨架与登录页
-
-**目标**：能登录进入编辑页，未登录被拦。
-
-**产出**
-
-- Tailwind CSS 接入（`@tailwindcss/vite`）
-- `tsconfig` 路径别名 `@/*` → `src/*`，Vite `resolve.alias` 同步
-- `npx shadcn@latest init` 并按需 add 组件
-- React Router 路由：`/login`、`/edit`、`/preview`、`/versions`
-- TanStack Query Provider
-- 登录页（shadcn Form + react-hook-form + zod）
-- 路由守卫：`GET /api/auth/me` 未通过则跳 `/login`
-- 守卫通过后取 `GET /api/resumes/current`，把 resume id 存入 context，供后续所有带 `:id` 的接口使用
-
-**验证**
-
-- 未登录访问 `/edit` 自动跳 `/login`
-- 登录成功后进入 `/edit`，刷新页面仍保持登录
-- 登出后回到 `/login`
-
-<br />
-
-### Step 9　样式常量表
-
-**目标**：把 Word 的排版参数抽成唯一数据源。
-
-**产出**
-
-- `shared/style-constants.ts`：字体族、各级字号、行距、段间距、页边距、模块间距
-- 供前端 CSS 变量与后端 docx 代码共同读取
-- 数值取 [tech-stack.md](./tech-stack.md) 的「样式来源」表，无需再解析 Word
-
-**验证**
-
-- 前端与后端均能引用，无重复定义
-- 改一个值，前端预览与 docx 输出同时变化
-
-<br />
-
-### Step 10　编辑页：表单与动态条目
-
-**依赖**：Step 3 的 schema、Step 9 的样式常量。
-
-**目标**：能完整填写简历，条目可增删拖拽。
-
-**产出**
-
-- 按 schema 渲染各模块表单
-- 可多条目模块用 `useFieldArray` 实现增删
-- dnd-kit 拖拽排序，接 `useFieldArray` 的 `move()`
-- 基础信息含照片上传入口（Step 12 完成前先留占位）
-
-**验证**
-
-- 每个模块都能新增、删除、拖拽调整条目顺序
-- 必填项为空时给出校验提示
-- 拖拽后表单值顺序与界面一致
-
-<br />
-
-### Step 11　草稿自动保存
-
-**目标**：输入不丢。
-
-**产出**
-
-- 表单变化 debounce 1s 调 `PATCH /api/resumes/draft`
-- `visibilitychange` / `pagehide` 时用 `navigator.sendBeacon` 补发
-- 界面显示保存状态（保存中 / 已保存 / 失败）
-
-**验证**
-
-- 修改内容后等 1 秒，刷新页面数据仍在
-- 修改内容后立刻关闭标签页，重新打开数据仍在
-- 断网时显示保存失败，恢复网络后能重试成功
-
-<br />
-
-### Step 12　照片上传前端
-
-**目标**：上传即压缩，避免存原图。
-
-**产出**
-
-- 文件选择后先用 canvas 缩放到 295×413 并转 JPEG base64（质量 0.85）
-- 调 `POST /api/resumes/photo`，成功后更新预览
-- 展示当前照片，支持替换
-
-**验证**
-
-- 上传一张 3 MB 手机原图后，库中 `photos.data` 长度在 100 KB 量级
-- 同一张图重复上传，`photos` 行数不变
-- 替换照片后编辑页预览同步更新
-
-<br />
-
-### Step 13　版本管理页
+### Step 12　前端：版本管理页
 
 **目标**：存档、查看、恢复可操作。
 
@@ -279,7 +269,26 @@
 
 <br />
 
-## 阶段 D：导出与验收
+### Step 13　后端：版本接口
+
+**目标**：存档、列表、查看、恢复四个动作可用。
+
+**产出**
+
+- `POST /api/resumes/:id/versions`：把当前 `data` 与 `photo_id` 存入快照，可带备注
+- `GET /api/resumes/:id/versions`：返回列表（时间 + 备注，不含快照本体）
+- `GET /api/resumes/:id/versions/:versionId`：返回单条快照内容与 `photo_id`
+- `POST /api/resumes/:id/versions/:versionId/restore`：用快照覆盖 `resumes.data`，并把 `photo_id` 指向该版本的 `photo_id`
+
+**验证**
+
+- 存档 → 修改草稿 → 恢复 → 草稿回到快照内容，`photo_id` 也回到当时的值
+- 恢复不产生新版本，版本数量不变
+- 恢复后旧照片行仍在 `photos` 中（历史版本靠它取图）
+
+<br />
+
+## 阶段 F：导出与验收
 
 ### Step 14　打印预览页
 
@@ -290,7 +299,7 @@
 - `/preview` 路由，渲染 A4 尺寸只读 DOM
 - 纯 HTML + Tailwind `print:` 变体，**不使用 shadcn 组件**
 - `@page { size: A4; margin: ... }`，`@media print` 隐藏导航等非内容元素
-- 样式值全部来自 Step 9 的常量表
+- 样式值全部来自 Step 6 的常量表
 
 **验证**
 
@@ -333,6 +342,7 @@
 
 - 上述链路无中断、无报错
 - 冷启动按说明操作即可跑起来
+- e2e 用例覆盖全链路
 - 两份文档与实现无矛盾
 
 <br />
@@ -342,10 +352,11 @@
 | 风险 | 影响步骤 | 应对 |
 | --- | --- | --- |
 | Prisma 在 Bun 下的 postinstall 被跳过 | Step 2 | 配 `trustedDependencies`，并把 `bunx prisma generate` 写进 `postinstall` |
-| 照片被误删导致历史版本丢图 | Step 7、13 | `photos` 只增不删，不做孤儿清理 |
-| 打印样式与 docx 样式不一致 | Step 9、14、15 | 所有排版参数只从常量表读，禁止在两侧硬编码 |
-| `useFieldArray` 与 dnd-kit 顺序不同步 | Step 10 | 拖拽结束时调用 `move()` 而非直接改数组 |
-| 前端拿不到 resume id 就调后续接口 | Step 8、10 | 守卫通过后先取 `GET /api/resumes/current`，把 id 存进 context 再渲染编辑页 |
+| 前端先行导致接口契约漂移 | Step 4~13 | 契约以 `shared/` 的 zod schema 为准，两侧共用同一份定义 |
+| 照片被误删导致历史版本丢图 | Step 11、13 | `photos` 只增不删，不做孤儿清理 |
+| 打印样式与 docx 样式不一致 | Step 6、14、15 | 所有排版参数只从常量表读，禁止在两侧硬编码 |
+| `useFieldArray` 与 dnd-kit 顺序不同步 | Step 7 | 拖拽结束时调用 `move()` 而非直接改数组 |
+| 前端拿不到 resume id 就调后续接口 | Step 8、9 | 守卫通过后先取 `GET /api/resumes/current`，把 id 存进 context 再渲染编辑页 |
 | 导出的 docx 照片用外链，收件人看不到图 | Step 15 | 照片必须 base64 内嵌，不沿用原文档的 link 方式 |
 
 <br />

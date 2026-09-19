@@ -56,6 +56,11 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - Bun 运行时自动从 cwd（`server/`）加载 `.env`。
 - Prisma CLI 不自动加载，由 `prisma.config.ts` 里的 dotenv 显式读取 `server/.env`。
 
+## 开发顺序
+
+- **先前端，后后端**：每个 step 先把页面与交互做出来、能在浏览器里看到效果，再做后端接口与数据落库。
+- 接口契约以 `shared/` 的 zod schema 为准，前端先按契约调用，后端补齐时保持字段一致。
+
 ## 关键实现约定
 
 - **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`pagehide` 时用 `sendBeacon` 补发。

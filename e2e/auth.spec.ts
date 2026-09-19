@@ -69,5 +69,5 @@ test('登录后可在编辑页与版本记录、打印预览之间导航', async
 
   await page.getByRole('link', { name: '打印预览' }).click()
   await expect(page).toHaveURL(`/resumes/${resumeId}/preview`)
-  await expect(page.getByRole('heading', { name: '打印预览' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '打印 / 导出 PDF' })).toBeVisible()
 })

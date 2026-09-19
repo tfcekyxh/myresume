@@ -5,6 +5,7 @@ import {
   FONT_SIZE_PT,
   INDENT,
   LINE_SPACING,
+  PHOTO,
   SECTION_TITLE,
   type ExperienceItem,
   type ProjectItem,
@@ -46,7 +47,8 @@ function SectionTitle({ children }: { children: ReactNode }) {
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
   return (
-    <section className="space-y-1">
+    // break-inside-avoid：打印分页时尽量不把一段经历从中间切断
+    <section className="space-y-1 break-inside-avoid">
       <SectionTitle>{title}</SectionTitle>
       <div style={{ paddingLeft: `${INDENT.bodyCm}cm`, paddingRight: `${INDENT.bodyCm}cm` }}>
         {children}
@@ -138,8 +140,8 @@ export function ResumeReadonly({ data, photoBase64 }: { data: ResumeData; photoB
             alt="证件照"
             className="shrink-0 object-cover"
             style={{
-              width: 'var(--resume-photo-width, 1.98cm)',
-              height: 'var(--resume-photo-height, 2.2cm)',
+              width: `${PHOTO.displayWidthCm}cm`,
+              height: `${PHOTO.displayHeightCm}cm`,
             }}
           />
         )}

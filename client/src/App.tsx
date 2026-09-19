@@ -1,23 +1,20 @@
-import { useEffect, useState } from 'react'
-import { RESUME_MODULE_ORDER } from '@mymenu/shared'
+import { Navigate, Route, Routes } from 'react-router-dom'
+import { RequireAuth } from '@/components/require-auth'
+import { EditPage } from '@/pages/edit'
+import { LoginPage } from '@/pages/login'
+import { PreviewPage } from '@/pages/preview'
+import { VersionsPage } from '@/pages/versions'
 
-function App() {
-  const [status, setStatus] = useState('检测中…')
-
-  useEffect(() => {
-    fetch('/api/health')
-      .then((res) => res.json())
-      .then((data) => setStatus(data.ok ? '后端连接正常' : '后端返回异常'))
-      .catch(() => setStatus('后端未连接'))
-  }, [])
-
+export default function App() {
   return (
-    <main>
-      <h1>简历</h1>
-      <p>{status}</p>
-      <p>模块：{RESUME_MODULE_ORDER.join(' / ')}</p>
-    </main>
+    <Routes>
+      <Route path="/login" element={<LoginPage />} />
+      <Route element={<RequireAuth />}>
+        <Route path="/edit" element={<EditPage />} />
+        <Route path="/versions" element={<VersionsPage />} />
+        <Route path="/preview" element={<PreviewPage />} />
+      </Route>
+      <Route path="*" element={<Navigate to="/edit" replace />} />
+    </Routes>
   )
 }
-
-export default App

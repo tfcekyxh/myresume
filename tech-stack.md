@@ -64,7 +64,7 @@ resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
 
 关系为 `user 1:N resume 1:N resume_version`，`resume 1:N photo`（照片池）。
 
-**表按 1:N 建，UI 先当 1:1 用**：`resumes.user_id` 是普通索引而非唯一约束，带 `title` 字段，但界面不暴露简历列表页——登录后调 `GET /api/resumes/current` 取该用户唯一那份（不存在则自动创建）。将来要支持多份简历，只需补列表页与 `POST /api/resumes`，表结构和已有接口都不用改。
+**多份简历，已完整支持**：`resume.user_id` 是普通索引而非唯一约束，一个人可以有多份简历（前端 / 后端 / 全栈各一份），每份各有草稿、证件照与版本记录。登录后先进 `/resumes` 列表页选一份，再进入该份的编辑 / 版本 / 预览页；接口路径带 resume id，URL 即身份（可刷新、可分享）。
 
 `data` 存整份简历 JSON（**不含照片**），`photo_id` 指向当前使用的照片。`photos` 是只增不改的照片池，换照片即插入新行。`resume_versions` 存只读快照，同时记录当时的 `photo_id`，因此照片也被版本控制且不重复存储。
 
@@ -77,7 +77,12 @@ POST   /api/auth/login
 POST   /api/auth/logout
 GET    /api/auth/me
 
-GET    /api/resumes/current
+GET    /api/resumes
+POST   /api/resumes
+GET    /api/resumes/:id
+PATCH  /api/resumes/:id
+DELETE /api/resumes/:id
+
 PATCH  /api/resumes/:id/draft
 
 GET    /api/resumes/:id/photo
@@ -114,8 +119,10 @@ POST   /api/export/docx
 
 ### 版本
 
-- 点「存档」插入一条只读快照，记录当时的 `snapshot` 与 `photo_id`，可带备注。
-- 「恢复到此版本」= 用快照覆盖 `resumes.data`，并把 `resumes.photo_id` 指向该版本的 `photo_id`；确认后直接覆盖，不做 diff、不生成新版本。
+- 草稿（`resumes.data`）是唯一的工作区，编辑时自动保存覆盖它；版本是**只读快照**，只在点「存档」时产生。
+- 点「存档」插入一条版本，记录当时的 `snapshot` 与 `photo_id`，可带备注。产生后内容不再改变，因此随时可以安全回滚。
+- 「恢复到此版本」= 用快照覆盖 `resumes.data` 与 `resumes.photo_id`；确认后直接覆盖，不做 diff、不新增记录。
+- 版本列表顶部固定显示一条「当前草稿（未存档）」，内容随编辑实时更新；它只可查看，不提供恢复（它本身就是当前内容）。
 - `photos` 行只增不删，被历史版本引用的照片必须保留，否则历史版本会丢图。
 
 ### 样式来源

@@ -1,25 +1,16 @@
 import { expect, test, type Page } from '@playwright/test'
-import {
-  clearPhoto,
-  getCurrentResumeId,
-  loginAsDefaultUser,
-  resetDraft,
-} from './helpers'
+import { getCurrentResumeId, setupResumeForEdit } from './helpers'
 import { countResumePhotos, disconnectDb } from './db'
 
 /**
  * 证件照前端压缩与上传，走真实接口。
  *
- * 上传会把照片落库（resumes.photoId），所以每个用例前先把当前照片清掉，
- * 保证都从「未上传」开始。
+ * 每个用例从「只有一份干净简历」的编辑页出发，照片天然为空。
  */
 const PHOTO_PATH = '/photo'
 
 test.beforeEach(async ({ page }) => {
-  await loginAsDefaultUser(page)
-  await clearPhoto(page)
-  await resetDraft(page)
-  await page.reload()
+  await setupResumeForEdit(page)
 })
 
 test.afterAll(async () => {

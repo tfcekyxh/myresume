@@ -64,13 +64,13 @@ bun run test:e2e:ui      # 可视化 UI 模式
 ## 关键实现约定
 
 - **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`visibilitychange`（hidden）与 `pagehide` 时用 `fetch(..., { keepalive: true })` 立即补发一次（sendBeacon 只能发 POST，与 PATCH 接口不符）。
-- **版本**：点「存档」生成只读快照；恢复 = 覆盖当前草稿，不做 diff、不生成新版本。照片跟随版本（`resume_versions.photo_id`）。
+- **草稿与版本**：草稿（`resumes.data`）是唯一的工作区，编辑时自动保存覆盖它；版本（`resume_versions.snapshot`）是**只读快照**，只在点「存档」时产生，产生后永不改变。恢复 = 用快照覆盖草稿。版本列表顶部固定显示一条「当前草稿（未存档）」，内容随编辑实时更新，只可查看、不可恢复。照片跟随版本（`resume_versions.photo_id`）。
 - **照片**：base64 存独立 `photos` 表，简历与快照只存 `photo_id` 引用；`photos` 只增不删。前端必须压缩后再传。
 - **简历结构**：只定义一份 zod schema 于 `shared/`，前端表单、后端校验、docx 生成三处复用。
 - **编辑页表单**：单层 `useForm<ResumeData>` + `zodResolver(resumeDataSchema)`，用 `FormProvider` 下发，各模块组件通过 `useFormContext` 读写。可多条目模块用 `useFieldArray` + dnd-kit，拖拽结束调 `move()` 而非直接改数组。
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx 共同读取，禁止两侧硬编码。
-- **多简历**：表按 `user 1:N resume 1:N resume_version` 建，UI 暂当 1:1 用，接口路径带 `:id`。
+- **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`、`/preview`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
 - **docx 导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
 
 ## 简历结构（模块顺序固定）
@@ -95,7 +95,7 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **一个用例只讲一件事，避免重复**：同一行为的多种路径用循环或串行步骤合进一个用例，不拆成多个。
 - **复用系统 Chrome**：配置用 `channel: 'chrome'`，不下载 Playwright 自带 Chromium。变更运行机器时若 Chrome 非默认路径，需调整。
 - 配置项 `reuseExistingServer: true`、`webServer.command: 'bun run dev'`：若 dev 已起则复用，否则自动拉起前后端。
-- 账号/密码走 `E2E_USERNAME` / `E2E_PASSWORD` 环境变量覆盖，默认 `liujiantao/liujiantao`。
+- **必须用专用测试账号**：默认 `e2e-tester` / `e2e-tester`，由 `e2e/global-setup.ts` 在跑测试前自动创建（可用 `E2E_USERNAME` / `E2E_PASSWORD` 覆盖）。用例的 `beforeEach` 会清空该账号的全部简历，**绝不能把账号指向真实用户**，否则一次 e2e 就会删掉真数据。
 - 断言 shadcn 的 `CardTitle` 时**勿用** `getByRole('heading')`：shadcn 渲染成 `div`，应改用 `getByText(...)`。
 - 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「打印预览」「返回编辑」。
 - 登录后的公共步骤抽在 `e2e/helpers.ts`（`loginAsDefaultUser`），各 spec 复用。

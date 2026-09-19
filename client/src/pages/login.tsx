@@ -27,7 +27,7 @@ export function LoginPage() {
     defaultValues: { username: '', password: '' },
   })
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/edit'
+  const from = (location.state as { from?: string } | null)?.from ?? '/resumes'
 
   // 已登录直接放行，避免重复登录
   if (!isPending && user) {

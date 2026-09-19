@@ -1,8 +1,14 @@
 import { expect, test } from '@playwright/test'
-import { USERNAME, loginAsDefaultUser } from './helpers'
+import {
+  USERNAME,
+  clearResumes,
+  loginAsDefaultUser,
+  openEdit,
+  createResume,
+} from './helpers'
 
 test('未登录访问受保护页面会被重定向到登录页', async ({ page }) => {
-  for (const path of ['/edit', '/versions', '/preview', '/']) {
+  for (const path of ['/resumes', '/resumes/abc/edit', '/resumes/abc/versions', '/resumes/abc/preview', '/']) {
     await page.goto(path)
 
     await expect(page).toHaveURL('/login')
@@ -31,11 +37,11 @@ test('登录成功后可编辑，会话在刷新与重访登录页时保持', as
   await expect(page.getByText(USERNAME)).toBeVisible()
 
   await page.reload()
-  await expect(page).toHaveURL('/edit')
-  await expect(page.getByRole('heading', { name: '编辑简历' })).toBeVisible()
+  await expect(page).toHaveURL('/resumes')
+  await expect(page.getByRole('heading', { name: '我的简历' })).toBeVisible()
 
   await page.goto('/login')
-  await expect(page).toHaveURL('/edit')
+  await expect(page).toHaveURL('/resumes')
 })
 
 test('登出后无法再访问受保护页面', async ({ page }) => {
@@ -44,21 +50,24 @@ test('登出后无法再访问受保护页面', async ({ page }) => {
   await page.getByRole('button', { name: '登出' }).click()
   await expect(page).toHaveURL('/login')
 
-  await page.goto('/edit')
+  await page.goto('/resumes')
   await expect(page).toHaveURL('/login')
 })
 
 test('登录后可在编辑页与版本记录、打印预览之间导航', async ({ page }) => {
   await loginAsDefaultUser(page)
+  await clearResumes()
+  const resumeId = await createResume(page, '测试简历')
+  await openEdit(page, resumeId)
 
   await page.getByRole('link', { name: '版本记录' }).click()
-  await expect(page).toHaveURL('/versions')
+  await expect(page).toHaveURL(`/resumes/${resumeId}/versions`)
   await expect(page.getByRole('heading', { name: '版本记录' })).toBeVisible()
 
   await page.getByRole('link', { name: '返回编辑' }).click()
-  await expect(page).toHaveURL('/edit')
+  await expect(page).toHaveURL(`/resumes/${resumeId}/edit`)
 
   await page.getByRole('link', { name: '打印预览' }).click()
-  await expect(page).toHaveURL('/preview')
+  await expect(page).toHaveURL(`/resumes/${resumeId}/preview`)
   await expect(page.getByRole('heading', { name: '打印预览' })).toBeVisible()
 })

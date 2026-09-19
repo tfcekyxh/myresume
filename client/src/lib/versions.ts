@@ -59,7 +59,7 @@ export function useRestoreVersion(resumeId: string) {
     onSuccess: () => {
       // 恢复会覆盖草稿，之后整页跳回编辑页重新取数据（见调用处），
       // 这里只需把缓存标脏，避免拿到旧的草稿内容
-      void queryClient.invalidateQueries({ queryKey: resumeKey })
+      void queryClient.invalidateQueries({ queryKey: resumeKey(resumeId) })
     },
   })
 }

@@ -1,15 +1,13 @@
 import { expect, test } from '@playwright/test'
-import { loginAsDefaultUser, resetDraft } from './helpers'
+import { setupResumeForEdit } from './helpers'
 
-// 草稿会落库，用例之间必须从同一份空草稿开始，否则前面用例的内容会残留进来
+// 多简历之后，每个用例从「只有一份干净简历」的编辑页出发
 test.beforeEach(async ({ page }) => {
-  await loginAsDefaultUser(page)
-  await resetDraft(page)
-  await page.reload()
+  await setupResumeForEdit(page)
 })
 
 test('简历表单可填写基本信息', async ({ page }) => {
-  await expect(page.getByRole('heading', { name: '编辑简历' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '测试简历' })).toBeVisible()
   await expect(page.getByText('基本信息', { exact: true })).toBeVisible()
   await expect(page.getByText('教育经历', { exact: true })).toBeVisible()
 

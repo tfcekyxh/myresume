@@ -15,7 +15,7 @@
 | 选型与实现约定 | [tech-stack.md](./tech-stack.md) |
 | 排版参数 | [tech-stack.md](./tech-stack.md) 的「样式来源」 |
 
-**已定**：`user 1:N resume 1:N resume_version`，表按 1:N 建，UI 先当 1:1 用（不暴露列表页）。接口路径从一开始就带 resume id。
+**已定**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有草稿、证件照与版本记录；登录后先进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit` 等页面。接口路径带 resume id。
 
 **已知缺陷**：现有 Word 简历中的证件照是外链（`file:///.../10MB.jpg`），docx 包里没有图片本体，发给别人会丢图。Step 15 实现导出时必须内嵌图片，不能沿用外链。
 
@@ -176,15 +176,17 @@
 
 **产出**
 
-- `GET /api/resumes/current`：返回该用户唯一那份简历（含 `id`、`data`、`photoId`），不存在则自动创建
+- `GET /api/resumes/:id`：返回该用户指定那份简历（含 `id`、`title`、`data`、`photoId`）
+- `GET /api/resumes` / `POST /api/resumes` / `PATCH /api/resumes/:id` / `DELETE /api/resumes/:id`：多简历的列表、新建、重命名、删除
 - `PATCH /api/resumes/:id/draft`：zod 校验后用整份 JSON 覆盖 `resumes.data`
 
 **验证**
 
-- `PATCH` 一个合法 JSON 后再 `GET /api/resumes/current`，返回内容一致
+- `PATCH` 一个合法 JSON 后再 `GET /api/resumes/:id`，返回内容一致
 - `PATCH` 一个不符合 schema 的 JSON，返回 400 且错误信息可读
 - 两个不同账号的草稿互不可见
 - 访问他人的 resume id 返回 404，而非返回数据
+- 新建 / 重命名 / 删除简历可用；删除后其照片与版本记录级联清除
 
 <br />
 
@@ -196,7 +198,7 @@
 
 **产出**
 
-- 守卫通过后取 `GET /api/resumes/current`，把 resume id 存入 context，供后续所有带 `:id` 的接口使用
+- 路由 `/resumes`（列表）→ `/resumes/:resumeId/edit|versions|preview`，resume id 从 URL 取，ResumeGate 据此拉取并下发 context
 - 编辑页用该 id 初始化表单
 - 表单变化 debounce 1s 调 `PATCH /api/resumes/:id/draft`
 - `visibilitychange` / `pagehide` 时用 `fetch(..., { keepalive: true })` 补发（sendBeacon 只能发 POST，与 PATCH 接口不符）
@@ -358,7 +360,7 @@
 | 照片被误删导致历史版本丢图 | Step 11、13 | `photos` 只增不删，不做孤儿清理 |
 | 打印样式与 docx 样式不一致 | Step 6、14、15 | 所有排版参数只从常量表读，禁止在两侧硬编码 |
 | `useFieldArray` 与 dnd-kit 顺序不同步 | Step 7 | 拖拽结束时调用 `move()` 而非直接改数组 |
-| 前端拿不到 resume id 就调后续接口 | Step 8、9 | 守卫通过后先取 `GET /api/resumes/current`，把 id 存进 context 再渲染编辑页 |
+| 前端拿不到 resume id 就调后续接口 | Step 8、9 | 路由带 resume id，ResumeGate 据此拉取并下发 context，数据就绪后再渲染编辑页 |
 | 导出的 docx 照片用外链，收件人看不到图 | Step 15 | 照片必须 base64 内嵌，不沿用原文档的 link 方式 |
 
 <br />

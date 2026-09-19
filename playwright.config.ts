@@ -4,7 +4,9 @@ const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
 
 export default defineConfig({
   testDir: './e2e',
-  // 所有用例共用预置账号的同一份简历草稿，并发会互相覆盖，故串行执行
+  // 测试跑在专用账号上，跑前确保它存在
+  globalSetup: './e2e/global-setup.ts',
+  // 所有用例共用同一个测试账号的简历，并发会互相覆盖，故串行执行
   workers: 1,
   reporter: 'list',
 

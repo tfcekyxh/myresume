@@ -22,19 +22,46 @@ function formatIssues(error: z.ZodError): string[] {
   })
 }
 
-/** 取当前用户唯一那份简历，没有就建一份。 */
-async function findOrCreateResume(userId: string) {
-  const existing = await prisma.resume.findFirst({ where: { userId } })
-  if (existing) return existing
+/** 简历标题。 */
+const titleSchema = z.object({ title: z.string().min(1).max(50) })
 
-  return prisma.resume.create({
-    data: { userId, data: createEmptyResumeData() },
+/** 简历列表。登录后先进这里，再选一份进入编辑。 */
+resumesRouter.get('/', async (req, res) => {
+  const resumes = await prisma.resume.findMany({
+    where: { userId: req.session.userId! },
+    orderBy: { updatedAt: 'desc' },
+    select: { id: true, title: true, updatedAt: true },
   })
-}
 
-resumesRouter.get('/current', async (req, res) => {
-  // requireAuth 保证进来了就一定有 userId
-  const resume = await findOrCreateResume(req.session.userId!)
+  res.json(resumes)
+})
+
+resumesRouter.post('/', async (req, res) => {
+  const parsed = titleSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: '请填写简历名称（1~50 字）' })
+    return
+  }
+
+  const resume = await prisma.resume.create({
+    data: {
+      userId: req.session.userId!,
+      title: parsed.data.title,
+      data: createEmptyResumeData(),
+    },
+    select: { id: true, title: true, updatedAt: true },
+  })
+
+  res.json(resume)
+})
+
+/** 单份简历详情。编辑页靠它初始化表单。 */
+resumesRouter.get('/:id', async (req, res) => {
+  const resume = await findOwnResume(req.params.id, req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
 
   res.json({
     id: resume.id,
@@ -43,6 +70,41 @@ resumesRouter.get('/current', async (req, res) => {
     photoId: resume.photoId,
     updatedAt: resume.updatedAt,
   })
+})
+
+/** 重命名。 */
+resumesRouter.patch('/:id', async (req, res) => {
+  const resume = await findOwnResume(req.params.id, req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
+
+  const parsed = titleSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: '请填写简历名称（1~50 字）' })
+    return
+  }
+
+  const updated = await prisma.resume.update({
+    where: { id: resume.id },
+    data: { title: parsed.data.title },
+    select: { id: true, title: true, updatedAt: true },
+  })
+
+  res.json(updated)
+})
+
+/** 删除。照片与版本记录随简历级联删除。 */
+resumesRouter.delete('/:id', async (req, res) => {
+  const resume = await findOwnResume(req.params.id, req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
+
+  await prisma.resume.delete({ where: { id: resume.id } })
+  res.json({ ok: true })
 })
 
 resumesRouter.patch('/:id/draft', async (req, res) => {

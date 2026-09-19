@@ -1,14 +1,12 @@
 import { expect, test } from '@playwright/test'
 import { createEmptyResumeData } from '@mymenu/shared'
-import { loginAsDefaultUser, resetDraft, setDraft } from './helpers'
+import { getCurrentResumeId, setDraft, setupResumeForEdit } from './helpers'
 
 const DRAFT_PATCH = '**/api/resumes/*/draft'
 
-// 自动保存会把内容写进库，用例之间必须从同一份空草稿开始
+// 多简历之后，每个用例从「只有一份干净简历」的编辑页出发
 test.beforeEach(async ({ page }) => {
-  await loginAsDefaultUser(page)
-  await resetDraft(page)
-  await page.reload()
+  await setupResumeForEdit(page)
 })
 
 test('修改内容后先显示保存中再显示已保存，刷新后内容仍在', async ({ page }) => {
@@ -53,7 +51,7 @@ test('打开编辑页会加载库里已有的草稿内容', async ({ page }) => 
   await setDraft(page, draft)
 
   // 整页重新加载，走 ResumeGate 拉取并初始化表单这条链路
-  await page.goto('/edit')
+  await page.reload()
 
   await expect(page.getByLabel('姓名')).toHaveValue('库里已有')
   await expect(page.getByLabel('求职意向')).toHaveValue('后端工程师')
@@ -75,12 +73,13 @@ test('保存失败时显示失败提示', async ({ page }) => {
 })
 
 test('关闭页面时补发未落库的改动', async ({ page, context }) => {
+  const resumeId = await getCurrentResumeId(page)
   await page.getByLabel('姓名').fill('离页补发')
 
   // 不等 debounce（1s），直接关页面，触发 pagehide 的 keepalive 补发
   await page.close()
 
   const reopened = await context.newPage()
-  await reopened.goto('/edit')
+  await reopened.goto(`/resumes/${resumeId}/edit`)
   await expect(reopened.getByLabel('姓名')).toHaveValue('离页补发')
 })

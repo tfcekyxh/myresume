@@ -77,7 +77,7 @@ export function useUploadPhoto() {
         id: photo.id,
         data: base64,
       })
-      queryClient.setQueryData<ResumeRecord>(resumeKey, (prev) =>
+      queryClient.setQueryData<ResumeRecord>(resumeKey(resumeId), (prev) =>
         prev ? { ...prev, photoId: photo.id } : prev
       )
     },

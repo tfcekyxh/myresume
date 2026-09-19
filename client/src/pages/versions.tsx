@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { RotateCcw, Eye } from 'lucide-react'
+import { Eye, RotateCcw } from 'lucide-react'
 import { ResumeReadonly } from '@/components/resume-readonly'
 import { useResume } from '@/components/resume-gate'
 import {
@@ -15,6 +15,8 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { usePhoto } from '@/lib/photo'
+import { useResumeDetail } from '@/lib/resume'
 import { useRestoreVersion, useVersion, useVersions } from '@/lib/versions'
 
 function formatTime(iso: string) {
@@ -27,35 +29,48 @@ function formatTime(iso: string) {
   })
 }
 
-/** 查看某个版本的只读内容，含当时的照片。 */
-function VersionDialog({
+/** 正在查看的目标：当前草稿，或某条历史版本。 */
+type Viewing = { kind: 'draft' } | { kind: 'version'; id: string } | null
+
+/** 查看弹窗：草稿直接渲染，历史版本先拉快照。 */
+function ViewDialog({
   resumeId,
-  versionId,
+  viewing,
   onClose,
 }: {
   resumeId: string
-  versionId: string | null
+  viewing: Viewing
   onClose: () => void
 }) {
-  const { data: version, isPending } = useVersion(resumeId, versionId)
+  const { data: resume } = useResumeDetail(resumeId)
+  const { data: version, isPending } = useVersion(
+    resumeId,
+    viewing?.kind === 'version' ? viewing.id : null
+  )
+  const { data: draftPhoto } = usePhoto(resumeId, resume?.photoId ?? null)
+
+  const isDraft = viewing?.kind === 'draft'
+  const data = isDraft ? resume?.data : version?.snapshot
+  const photoBase64 = isDraft ? draftPhoto?.data : version?.photo?.data
 
   return (
-    <Dialog open={versionId !== null} onOpenChange={(open) => !open && onClose()}>
+    <Dialog open={viewing !== null} onOpenChange={(open) => !open && onClose()}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle>
-            {version ? `版本快照 · ${formatTime(version.createdAt)}` : '版本快照'}
+            {isDraft
+              ? '当前草稿（未存档）'
+              : version
+                ? `版本快照 · ${formatTime(version.createdAt)}`
+                : '版本快照'}
           </DialogTitle>
         </DialogHeader>
 
-        {isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
+        {!isDraft && isPending && <p className="text-sm text-muted-foreground">加载中…</p>}
 
-        {version && (
+        {data && (
           <div className="rounded-lg border bg-white p-4">
-            <ResumeReadonly
-              data={version.snapshot}
-              photoBase64={version.photo?.data ?? null}
-            />
+            <ResumeReadonly data={data} photoBase64={photoBase64 ?? null} />
           </div>
         )}
       </DialogContent>
@@ -65,10 +80,11 @@ function VersionDialog({
 
 export function VersionsPage() {
   const { resumeId } = useResume()
+  const { data: resume } = useResumeDetail(resumeId)
   const { data: versions, isPending } = useVersions(resumeId)
   const restore = useRestoreVersion(resumeId)
 
-  const [viewingId, setViewingId] = useState<string | null>(null)
+  const [viewing, setViewing] = useState<Viewing>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
 
   async function handleRestore() {
@@ -76,7 +92,7 @@ export function VersionsPage() {
     await restore.mutateAsync(restoringId)
     // 恢复会覆盖草稿，而编辑页的表单只在挂载时用初始数据渲染，
     // 所以整页跳回编辑页重新取数据，而不是走前端路由。
-    window.location.assign('/edit')
+    window.location.assign(`/resumes/${resumeId}/edit`)
   }
 
   return (
@@ -84,57 +100,69 @@ export function VersionsPage() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">版本记录</h1>
         <Link
-          to="/edit"
+          to={`/resumes/${resumeId}/edit`}
           className="text-sm text-primary underline-offset-4 hover:underline"
         >
           返回编辑
         </Link>
       </header>
 
-      {isPending && <p className="mt-6 text-sm text-muted-foreground">加载中…</p>}
+      <ul className="mt-6 space-y-2">
+        {/* 草稿是正在编辑的工作区，不是历史版本，所以只读展示、不提供恢复 */}
+        <li className="flex items-center justify-between gap-3 rounded-lg border border-primary/40 bg-primary/5 p-3">
+          <div className="min-w-0">
+            <p className="flex items-center gap-2 text-sm">
+              当前草稿
+              <span className="rounded bg-primary px-1.5 py-0.5 text-xs text-primary-foreground">
+                未存档
+              </span>
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
+              {resume ? `最后保存于 ${formatTime(resume.updatedAt)}` : '加载中…'}
+            </p>
+          </div>
+          <Button variant="outline" size="sm" onClick={() => setViewing({ kind: 'draft' })}>
+            <Eye /> 查看
+          </Button>
+        </li>
+
+        {isPending && <li className="text-sm text-muted-foreground">加载中…</li>}
+
+        {versions?.map((version) => (
+          <li
+            key={version.id}
+            className="flex items-center justify-between gap-3 rounded-lg border p-3"
+          >
+            <div className="min-w-0">
+              <p className="text-sm">{formatTime(version.createdAt)}</p>
+              <p className="truncate text-xs text-muted-foreground">
+                {version.note || '（无备注）'}
+              </p>
+            </div>
+
+            <div className="flex shrink-0 gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setViewing({ kind: 'version', id: version.id })}
+              >
+                <Eye /> 查看
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setRestoringId(version.id)}>
+                <RotateCcw /> 恢复
+              </Button>
+            </div>
+          </li>
+        ))}
+      </ul>
 
       {versions && versions.length === 0 && (
-        <p className="mt-6 text-sm text-muted-foreground">
-          还没有版本记录。在编辑页点「存档」可以把当前内容存成一个版本。
+        <p className="mt-4 text-sm text-muted-foreground">
+          还没有存档版本。在编辑页点「存档」可以把当前草稿存成一个只读版本，用于回滚。
         </p>
       )}
 
-      {versions && versions.length > 0 && (
-        <ul className="mt-6 space-y-2">
-          {versions.map((version) => (
-            <li
-              key={version.id}
-              className="flex items-center justify-between gap-3 rounded-lg border p-3"
-            >
-              <div className="min-w-0">
-                <p className="text-sm">{formatTime(version.createdAt)}</p>
-                <p className="truncate text-xs text-muted-foreground">
-                  {version.note || '（无备注）'}
-                </p>
-              </div>
-
-              <div className="flex shrink-0 gap-2">
-                <Button variant="outline" size="sm" onClick={() => setViewingId(version.id)}>
-                  <Eye /> 查看
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setRestoringId(version.id)}
-                >
-                  <RotateCcw /> 恢复
-                </Button>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-
-      <VersionDialog
-        resumeId={resumeId}
-        versionId={viewingId}
-        onClose={() => setViewingId(null)}
-      />
+      <ViewDialog resumeId={resumeId} viewing={viewing} onClose={() => setViewing(null)} />
 
       <AlertDialog
         open={restoringId !== null}

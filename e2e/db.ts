@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import { PrismaPg } from '@prisma/adapter-pg'
+import { execFileSync } from 'node:child_process'
 import { config } from 'dotenv'
 import { resolve } from 'node:path'
 
@@ -53,4 +54,42 @@ export async function clearResumeVersions(resumeId: string) {
 /** 简历名下的版本记录数。 */
 export function countResumeVersions(resumeId: string) {
   return getPrisma().resumeVersion.count({ where: { resumeId } })
+}
+
+/**
+ * 删除指定账号的全部简历（照片、版本记录随外键级联删除）。
+ *
+ * 多简历之后，用例需要一个干净起点：列表页可能残留上一个用例建的简历。
+ * 只对专用测试账号调用——绝不能拿真实账号跑，否则会删掉真数据。
+ */
+export async function clearResumesForUser(username: string) {
+  await getPrisma().resume.deleteMany({ where: { user: { username } } })
+}
+
+/**
+ * 确保专用测试账号存在。
+ *
+ * 测试必须跑在自己的账号上：用例会清空该账号的简历，
+ * 若复用真实账号会把用户自己的简历一起删掉。
+ */
+export async function ensureTestUser(username: string, password: string) {
+  const prisma = getPrisma()
+
+  const existing = await prisma.user.findUnique({ where: { username } })
+  if (existing) return
+
+  await prisma.user.create({
+    data: { username, passwordHash: hashPassword(password) },
+  })
+}
+
+/**
+ * 用 Bun.password 生成 argon2id 哈希。
+ *
+ * Playwright 的 globalSetup 跑在 Node 进程里，没有 `Bun` 全局，
+ * 所以借一个 bun 子进程来算，保证与 server 的校验方式一致。
+ */
+function hashPassword(password: string): string {
+  const code = `process.stdout.write(await Bun.password.hash(${JSON.stringify(password)}))`
+  return execFileSync('bun', ['-e', code], { encoding: 'utf8' }).trim()
 }

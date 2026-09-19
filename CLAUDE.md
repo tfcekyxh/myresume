@@ -32,6 +32,8 @@ server/          Express 后端 + Prisma
   .env          数据库连接串、SESSION_SECRET（不入库）
   prisma/        schema + migrations + seed.ts
 shared/          前后端共享：zod schema、类型、样式常量
+e2e/             Playwright 端到端测试
+playwright.config.ts
 ```
 
 ## 常用命令
@@ -42,6 +44,8 @@ bun run dev              # 同时起前后端
 bun run db:generate      # 生成 Prisma Client
 bun run db:migrate       # 建表/改表（开发期）
 bun run db:seed          # 预置账号
+bun run test:e2e         # 跑 Playwright 端到端测试
+bun run test:e2e:ui      # 可视化 UI 模式
 ```
 
 需在 `server/` 目录下执行 Prisma 命令（Bun 隔离安装，依赖在各 workspace 内）。
@@ -75,6 +79,18 @@ bun run db:seed          # 预置账号
 ## 排版参数
 
 字体、字号、行距、页边距、标题样式（白字黑底）、要点列表缩进等数值，提取自原 Word 简历，见 `tech-stack.md` 的「样式来源」表。实现时以该表为准。
+
+## E2E 测试
+
+- 框架：Playwright（`@playwright/test`，仓库根安装）。测试在 `e2e/`，配置在 `playwright.config.ts`。
+- **只写端到端**：走真实浏览器 + 真实后端，不写接口级（`request`）测试；断言聚焦用户可见行为。
+- **一个用例只讲一件事，避免重复**：同一行为的多种路径用循环或串行步骤合进一个用例，不拆成多个。
+- **复用系统 Chrome**：配置用 `channel: 'chrome'`，不下载 Playwright 自带 Chromium。变更运行机器时若 Chrome 非默认路径，需调整。
+- 配置项 `reuseExistingServer: true`、`webServer.command: 'bun run dev'`：若 dev 已起则复用，否则自动拉起前后端。
+- 账号/密码走 `E2E_USERNAME` / `E2E_PASSWORD` 环境变量覆盖，默认 `liujiantao/liujiantao`。
+- 断言 shadcn 的 `CardTitle` 时**勿用** `getByRole('heading')`：shadcn 渲染成 `div`，应改用 `getByText(...)`。
+- 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「打印预览」「返回编辑」。
+- 新增功能（草稿、照片、版本、导出）每完成一步，按 `e2e/auth.spec.ts` 的写法补对应 spec。
 
 ## Git
 

@@ -3,6 +3,8 @@ import { z } from 'zod'
 import { createEmptyResumeData, PHOTO, resumeDataSchema } from '@mymenu/shared'
 import { prisma } from '../db'
 import { requireAuth } from '../require-auth'
+import { findOwnResume, parseResumeData } from '../resume-utils'
+import { versionsRouter } from './versions'
 
 export const resumesRouter = Router()
 
@@ -20,17 +22,6 @@ function formatIssues(error: z.ZodError): string[] {
   })
 }
 
-/**
- * 读库里的草稿并解析。
- *
- * 库里理论上都是通过 schema 校验写入的，但 schema 会演进、数据也可能被手工改过，
- * 解析失败时退回空草稿，避免把坏数据抛给前端。
- */
-function parseDraft(raw: unknown) {
-  const parsed = resumeDataSchema.safeParse(raw)
-  return parsed.success ? parsed.data : createEmptyResumeData()
-}
-
 /** 取当前用户唯一那份简历，没有就建一份。 */
 async function findOrCreateResume(userId: string) {
   const existing = await prisma.resume.findFirst({ where: { userId } })
@@ -41,14 +32,6 @@ async function findOrCreateResume(userId: string) {
   })
 }
 
-/** 按 id 取当前用户的简历。带上 userId 条件，别人的 id 一律当作不存在。 */
-function findOwnResume(resumeId: string, userId: string) {
-  return prisma.resume.findFirst({
-    where: { id: resumeId, userId },
-    select: { id: true, photoId: true },
-  })
-}
-
 resumesRouter.get('/current', async (req, res) => {
   // requireAuth 保证进来了就一定有 userId
   const resume = await findOrCreateResume(req.session.userId!)
@@ -56,7 +39,7 @@ resumesRouter.get('/current', async (req, res) => {
   res.json({
     id: resume.id,
     title: resume.title,
-    data: parseDraft(resume.data),
+    data: parseResumeData(resume.data),
     photoId: resume.photoId,
     updatedAt: resume.updatedAt,
   })
@@ -164,3 +147,6 @@ resumesRouter.post('/:id/photo', async (req, res) => {
 
   res.json(photo)
 })
+
+// 版本相关路由挂在简历下
+resumesRouter.use('/:id/versions', versionsRouter)

@@ -50,3 +50,15 @@ export async function clearPhoto(page: Page) {
   const { clearResumePhoto } = await import('./db')
   await clearResumePhoto(id)
 }
+
+/**
+ * 清掉当前用户的版本记录。
+ *
+ * 版本会真实落库，用例之间不清理的话，前一个用例存的版本会带进后一个用例的
+ * 版本列表（空状态、条数断言都会失败）。直接连库删，属于测试前置状态重置。
+ */
+export async function clearVersions(page: Page) {
+  const id = await getCurrentResumeId(page)
+  const { clearResumeVersions } = await import('./db')
+  await clearResumeVersions(id)
+}

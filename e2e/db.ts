@@ -44,3 +44,13 @@ export async function clearResumePhoto(resumeId: string) {
 export function countResumePhotos(resumeId: string) {
   return getPrisma().photo.count({ where: { resumeId } })
 }
+
+/** 删除简历名下的所有版本记录（photos 行保留，业务上没有删照片接口）。 */
+export async function clearResumeVersions(resumeId: string) {
+  await getPrisma().resumeVersion.deleteMany({ where: { resumeId } })
+}
+
+/** 简历名下的版本记录数。 */
+export function countResumeVersions(resumeId: string) {
+  return getPrisma().resumeVersion.count({ where: { resumeId } })
+}

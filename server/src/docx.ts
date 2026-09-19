@@ -55,8 +55,9 @@ const NO_BORDERS = {
 } as const
 
 /**
- * 正文段落的通用格式：字体、行距、左右缩进。
+ * 正文段落的通用格式：字号、行距、左右缩进。
  *
+ * 字体不在这里指定，由文档级默认样式统一下发（见 buildResumeDocx 的 fontFamily）。
  * shading 是文字底纹（只盖住文字本身），段落底纹会铺满整行，这里不用。
  */
 function bodyRun(
@@ -65,7 +66,6 @@ function bodyRun(
 ) {
   return new TextRun({
     text,
-    font: FONT.body,
     size: ptToHalfPoints(options.size ?? FONT_SIZE_PT.body),
     bold: options.bold,
     color: options.color ?? COLOR.bodyText,
@@ -147,7 +147,6 @@ const CONTENT_WIDTH_CM = PAGE.widthCm - PAGE.marginLeftCm - PAGE.marginRightCm
 function timeRun(text: string) {
   return new TextRun({
     text,
-    font: FONT.body,
     size: ptToHalfPoints(FONT_SIZE_PT.body),
     color: COLOR.timeText,
   })
@@ -309,11 +308,23 @@ function buildChildren(data: ResumeData, photoBase64: string | null) {
   return children
 }
 
+/**
+ * 构建简历 docx。
+ *
+ * fontFamily 由前端探测本机已安装的字体后传入；docx 里写字符串字体名会同时作用于
+ * ascii / hAnsi / eastAsia / cs，中英文都跟着变。走文档级默认样式，避免逐个 run 指定。
+ */
 export async function buildResumeDocx(
   data: ResumeData,
-  photoBase64: string | null
+  photoBase64: string | null,
+  fontFamily: string = FONT.body
 ): Promise<Buffer> {
   const doc = new Document({
+    styles: {
+      default: {
+        document: { run: { font: fontFamily } },
+      },
+    },
     numbering: {
       config: [
         {

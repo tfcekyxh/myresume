@@ -1,6 +1,6 @@
 import { Router } from 'express'
 import { z } from 'zod'
-import { createEmptyResumeData, PHOTO, resumeDataSchema } from '@mymenu/shared'
+import { createEmptyResumeData, FONT, FONT_CANDIDATES, PHOTO, resumeDataSchema } from '@mymenu/shared'
 import { prisma } from '../db'
 import { buildResumeDocx } from '../docx'
 import { requireAuth } from '../require-auth'
@@ -227,8 +227,12 @@ resumesRouter.post('/:id/export/docx', async (req, res) => {
       })
     : null
 
+  // 字体由前端探测本机可用字体后传入，只认候选清单里的值，其余回退默认
+  const requested = typeof req.body?.fontFamily === 'string' ? req.body.fontFamily : ''
+  const fontFamily = FONT_CANDIDATES.includes(requested) ? requested : FONT.body
+
   const data = parseResumeData(resume.data)
-  const buffer = await buildResumeDocx(data, photo?.data ?? null)
+  const buffer = await buildResumeDocx(data, photo?.data ?? null, fontFamily)
 
   // 文件名含姓名与日期；中文用 filename* 传，避免部分浏览器乱码
   const name = data.basic.name.trim() || resume.title

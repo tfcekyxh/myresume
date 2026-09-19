@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
+import { detectDocxFont } from '@/lib/fonts'
 
 type Props = {
   resumeId: string
@@ -22,7 +23,11 @@ export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Prop
     try {
       await flushDraft()
 
-      const res = await fetch(`/api/resumes/${resumeId}/export/docx`, { method: 'POST' })
+      const res = await fetch(`/api/resumes/${resumeId}/export/docx`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ fontFamily: detectDocxFont() }),
+      })
 
       if (!res.ok) {
         const body = (await res.json().catch(() => null)) as { error?: string } | null

@@ -3,7 +3,7 @@ import { execFileSync } from 'node:child_process'
 import { readFile, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createEmptyResumeData, type ResumeData } from '@mymenu/shared'
+import { createEmptyResumeData, FONT_CANDIDATES, type ResumeData } from '@mymenu/shared'
 import { getCurrentResumeId, setDraft, setupResumeForEdit } from './helpers'
 import { disconnectDb } from './db'
 
@@ -59,6 +59,11 @@ async function exportAndSave(page: Page, filePath: string): Promise<string> {
 /** 从 docx（zip）里读出 word/document.xml。 */
 function readDocumentXml(filePath: string): string {
   return execFileSync('unzip', ['-p', filePath, 'word/document.xml'], { encoding: 'utf8' })
+}
+
+/** 从 docx（zip）里读出 word/styles.xml，文档级默认样式（含字体）在这里。 */
+function readStylesXml(filePath: string): string {
+  return execFileSync('unzip', ['-p', filePath, 'word/styles.xml'], { encoding: 'utf8' })
 }
 
 /** 列出 docx（zip）里的条目。 */
@@ -120,6 +125,22 @@ test('导出的文件是含简历内容的 docx', async ({ page }) => {
     expect(xml).toContain('张三')
     expect(xml).toContain('教育经历')
     expect(xml).toContain('示例大学')
+  } finally {
+    await rm(filePath, { force: true })
+  }
+})
+
+test('导出的 docx 用本机已安装的候选字体', async ({ page }) => {
+  await setDraft(page, sampleDraft())
+  await page.reload()
+
+  const filePath = tempDocxPath()
+  try {
+    await exportAndSave(page, filePath)
+    const xml = readStylesXml(filePath)
+    // 前端探测本机字体后由后端写进文档默认样式；只断言落在候选清单内，
+    // 不断言具体是哪个，否则换台机器（mac/Windows）就挂
+    expect(FONT_CANDIDATES.some((font) => xml.includes(font))).toBe(true)
   } finally {
     await rm(filePath, { force: true })
   }

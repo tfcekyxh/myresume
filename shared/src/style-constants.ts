@@ -54,11 +54,26 @@ export const PAGE = {
 // ---------- 字体 ----------
 
 export const FONT = {
-  /** docx 用的字体名：等线 */
+  /** 最终兜底字体：等线。本机装了候选清单里的字体时会改用那个 */
   body: 'DengXian',
   /** 网页用的完整回退链 */
   webFamily: "DengXian, 等线, 'Microsoft YaHei', 'PingFang SC', sans-serif",
 } as const
+
+/**
+ * 导出字体候选，按优先级排列：先 macOS 自带，再 Windows 自带。
+ *
+ * 这里的名字直接写进 docx，Word 靠它匹配本机字体，所以必须是字体的正式英文名。
+ * 后端只认这份清单里的值，避免写入任意字体名；前端逐个探测本机是否安装，取第一个可用的。
+ */
+export const FONT_CANDIDATES: readonly string[] = [
+  'PingFang SC',
+  'DengXian',
+  'Microsoft YaHei',
+  'Source Han Sans SC',
+  'SimSun',
+  'SimHei',
+]
 
 export const FONT_SIZE_PT = {
   body: 10,

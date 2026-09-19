@@ -117,6 +117,33 @@ versionsRouter.get('/:versionId', async (req, res) => {
   })
 })
 
+versionsRouter.delete('/:versionId', async (req, res) => {
+  const resume = await findOwnResume(parentResumeId(req), req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
+
+  const version = await findOwnVersion(resume.id, req.params.versionId)
+  if (!version) {
+    res.status(404).json({ error: '版本不存在' })
+    return
+  }
+
+  // 只删快照这一行：照片走 photos 表且只增不改，草稿与别的版本可能还在用，不能跟着删。
+  await prisma.resumeVersion.delete({ where: { id: version.id } })
+
+  // 一份版本都不剩时，草稿就没有可回滚的存档了，把基准清空让它回到「未存档」
+  const remaining = await prisma.resumeVersion.count({ where: { resumeId: resume.id } })
+  if (remaining === 0) {
+    await prisma.$executeRaw`
+      UPDATE "Resume" SET "lastArchivedAt" = NULL WHERE "id" = ${resume.id}
+    `
+  }
+
+  res.json({ ok: true })
+})
+
 versionsRouter.post('/:versionId/restore', async (req, res) => {
   const resume = await findOwnResume(parentResumeId(req), req.session.userId!)
   if (!resume) {

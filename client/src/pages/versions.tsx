@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Link } from 'react-router-dom'
-import { Eye, RotateCcw } from 'lucide-react'
+import { Eye, RotateCcw, Trash2 } from 'lucide-react'
 import { ResumeReadonly } from '@/components/resume-readonly'
 import { useResume } from '@/components/resume-gate'
 import {
@@ -17,7 +17,7 @@ import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { usePhoto } from '@/lib/photo'
 import { useResumeDetail, type ResumeRecord } from '@/lib/resume'
-import { useRestoreVersion, useVersion, useVersions } from '@/lib/versions'
+import { useDeleteVersion, useRestoreVersion, useVersion, useVersions } from '@/lib/versions'
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -89,9 +89,11 @@ export function VersionsPage() {
   const { data: resume } = useResumeDetail(resumeId)
   const { data: versions, isPending } = useVersions(resumeId)
   const restore = useRestoreVersion(resumeId)
+  const remove = useDeleteVersion(resumeId)
 
   const [viewing, setViewing] = useState<Viewing>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
 
   // 草稿最后保存时间晚于最近一次存档时间，说明存档后又有改动
   const draftDirty = hasUnsavedChanges(resume)
@@ -102,6 +104,12 @@ export function VersionsPage() {
     // 恢复会覆盖草稿，而编辑页的表单只在挂载时用初始数据渲染，
     // 所以整页跳回编辑页重新取数据，而不是走前端路由。
     window.location.assign(`/resumes/${resumeId}/edit`)
+  }
+
+  async function handleDelete() {
+    if (!deletingId) return
+    await remove.mutateAsync(deletingId)
+    setDeletingId(null)
   }
 
   return (
@@ -167,6 +175,9 @@ export function VersionsPage() {
               <Button variant="outline" size="sm" onClick={() => setRestoringId(version.id)}>
                 <RotateCcw /> 恢复
               </Button>
+              <Button variant="outline" size="sm" onClick={() => setDeletingId(version.id)}>
+                <Trash2 /> 删除
+              </Button>
             </div>
           </li>
         ))}
@@ -195,6 +206,26 @@ export function VersionsPage() {
             <AlertDialogCancel disabled={restore.isPending}>取消</AlertDialogCancel>
             <AlertDialogAction onClick={() => void handleRestore()} disabled={restore.isPending}>
               {restore.isPending ? '恢复中…' : '确认恢复'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      <AlertDialog
+        open={deletingId !== null}
+        onOpenChange={(open) => !open && setDeletingId(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除这个版本？</AlertDialogTitle>
+            <AlertDialogDescription>
+              只删除该条版本记录，不影响当前草稿与其他版本。此操作不可撤销。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={remove.isPending}>取消</AlertDialogCancel>
+            <AlertDialogAction onClick={() => void handleDelete()} disabled={remove.isPending}>
+              {remove.isPending ? '删除中…' : '确认删除'}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

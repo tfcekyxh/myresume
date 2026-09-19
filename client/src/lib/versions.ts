@@ -50,6 +50,22 @@ export function useCreateVersion(resumeId: string) {
   })
 }
 
+export function useDeleteVersion(resumeId: string) {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (versionId: string) =>
+      api<{ ok: true }>(`/resumes/${resumeId}/versions/${versionId}`, {
+        method: 'DELETE',
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: versionsKey(resumeId) })
+      // 删掉最后一份版本会清空草稿的「已存档」基准，标签依赖它
+      void queryClient.invalidateQueries({ queryKey: resumeKey(resumeId) })
+    },
+  })
+}
+
 export function useRestoreVersion(resumeId: string) {
   const queryClient = useQueryClient()
 

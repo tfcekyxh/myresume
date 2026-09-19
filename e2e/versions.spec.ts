@@ -326,3 +326,54 @@ test('在编辑页存档会把备注保存到版本记录', async ({ page }) => 
   await goVersions(page)
   await expect(page.getByText('投递前端岗的版本')).toBeVisible()
 })
+
+/** 点某条版本的「删除」并确认。 */
+async function deleteVersionViaUi(page: Page, note: string) {
+  await page
+    .getByRole('listitem')
+    .filter({ hasText: note })
+    .getByRole('button', { name: '删除', exact: true })
+    .click()
+  await page.getByRole('button', { name: '确认删除', exact: true }).click()
+}
+
+test('删除版本需二次确认，取消时不发出删除请求', async ({ page }) => {
+  await createVersionViaApi(page, '待删除')
+
+  const deleteRequests: string[] = []
+  page.on('request', (req) => {
+    if (req.method() === 'DELETE' && req.url().includes('/versions/')) {
+      deleteRequests.push(req.url())
+    }
+  })
+
+  await goVersions(page)
+  await page.getByRole('button', { name: '删除', exact: true }).click()
+
+  await expect(page.getByText('删除这个版本？')).toBeVisible()
+  await page.getByRole('button', { name: '取消', exact: true }).click()
+  await expect(page.getByText('删除这个版本？')).not.toBeVisible()
+
+  expect(deleteRequests).toHaveLength(0)
+  await expect(page.getByText('待删除')).toBeVisible()
+})
+
+test('删除版本只删该条，删光后草稿回到未存档', async ({ page }) => {
+  await createVersionViaApi(page, '版本甲')
+  await createVersionViaApi(page, '版本乙')
+
+  await goVersions(page)
+  await deleteVersionViaUi(page, '版本甲')
+
+  // 只少了甲，乙还在，草稿也不受影响
+  await expect(page.getByText('版本甲')).not.toBeVisible()
+  await expect(page.getByText('版本乙')).toBeVisible()
+  expect(await fetchVersionCount(page)).toBe(1)
+
+  // 再删掉最后一条：回到空状态，且没有可回滚的存档了，草稿标签变回「未存档」
+  await deleteVersionViaUi(page, '版本乙')
+  await expect(page.getByText('还没有存档版本')).toBeVisible()
+  await expect(
+    page.getByRole('listitem').filter({ hasText: '当前草稿' }).getByTestId('draft-badge')
+  ).toHaveText('未存档')
+})

@@ -46,9 +46,11 @@ export const experienceItemSchema = z.object({
   points: z.array(longText).max(30),
 })
 
-/** 项目经历。比工作经历多出项目描述与技术栈两行。 */
+/** 项目经历。比工作经历多出项目类型、项目描述与技术栈。 */
 export const projectItemSchema = z.object({
   name: shortText,
+  /** 项目类型，如「全栈项目」「开源项目」。optional 是为了兼容加字段之前存下的草稿。 */
+  type: shortText.optional(),
   period: z.string().max(50),
   description: longText,
   techStack: midText,

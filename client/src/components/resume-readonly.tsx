@@ -4,6 +4,7 @@ import {
   FONT,
   FONT_SIZE_PT,
   INDENT,
+  ITEM_TITLE,
   LINE_SPACING,
   PHOTO,
   SECTION_TITLE,
@@ -19,7 +20,8 @@ import {
  * 排版数值全部取自 shared 的常量，不在组件里写死。
  */
 
-const hasText = (value: string | null | undefined) => (value ?? '').trim().length > 0
+const hasText = (value: string | null | undefined): value is string =>
+  (value ?? '').trim().length > 0
 
 const rootStyle = {
   fontFamily: FONT.webFamily,
@@ -28,19 +30,29 @@ const rootStyle = {
   color: COLOR.bodyText,
 }
 
+/**
+ * 章节标题：白字黑底 + 灰色下划线。
+ *
+ * 黑底挂在内联 span 上，只盖住标题文字；下划线留在 h2 上，铺满整行。
+ */
 function SectionTitle({ children }: { children: ReactNode }) {
   return (
     <h2
-      className="font-bold"
       style={{
         fontSize: `${SECTION_TITLE.fontSizePt}pt`,
-        color: SECTION_TITLE.textColor,
-        backgroundColor: SECTION_TITLE.backgroundColor,
         borderBottom: `${SECTION_TITLE.borderSizePt}pt solid ${SECTION_TITLE.borderColor}`,
-        padding: '0.1em 0.35em',
+        paddingBottom: '0.15em',
       }}
     >
-      {children}
+      <span
+        className="font-bold"
+        style={{
+          color: SECTION_TITLE.textColor,
+          backgroundColor: SECTION_TITLE.backgroundColor,
+        }}
+      >
+        {children}
+      </span>
     </h2>
   )
 }
@@ -61,13 +73,31 @@ function Time({ children }: { children: ReactNode }) {
   return <span style={{ color: COLOR.timeText }}>{children}</span>
 }
 
-/** 条目头一行：左侧粗体标题，右侧灰色时间。 */
-function ItemHeader({ title, period }: { title: string; period?: string }) {
+/**
+ * 条目头一行：首栏粗体，其余栏按常量表给的起始位置排开，时间靠右。
+ *
+ * 用 grid 复刻 docx 的制表位：第 2、3 栏的列宽由相邻起点相减得到。
+ */
+function ItemHeader({ columns, period }: { columns: (string | undefined)[]; period?: string }) {
+  const parts = columns.filter(hasText)
+  const starts = ITEM_TITLE.columnStartsCm
+  const columnWidths = starts
+    .slice(0, parts.length - 1)
+    .map((cm, i) => `${cm - (starts[i - 1] ?? 0)}cm`)
+
+  const template = [...columnWidths, '1fr', ...(hasText(period) ? ['auto'] : [])].join(' ')
+
   return (
-    <div className="flex items-baseline justify-between gap-3">
-      <span className="font-bold" style={{ fontSize: `${FONT_SIZE_PT.itemTitle}pt` }}>
-        {title}
-      </span>
+    <div className="grid items-baseline" style={{ gridTemplateColumns: template }}>
+      {parts.map((part, i) => (
+        <span
+          key={i}
+          className={i === 0 ? 'font-bold' : undefined}
+          style={i === 0 ? { fontSize: `${ITEM_TITLE.fontSizePt}pt` } : undefined}
+        >
+          {part}
+        </span>
+      ))}
       {hasText(period) && <Time>{period}</Time>}
     </div>
   )
@@ -94,11 +124,9 @@ function Points({ points }: { points: string[] }) {
 }
 
 function Experience({ item }: { item: ExperienceItem }) {
-  const heading = [item.role, item.company].filter(hasText).join(' · ')
-
   return (
     <div className="space-y-0.5">
-      <ItemHeader title={heading} period={item.period} />
+      <ItemHeader columns={[item.company, item.role]} period={item.period} />
       {hasText(item.summary) && <p>{item.summary}</p>}
       <Points points={item.points} />
     </div>
@@ -108,7 +136,7 @@ function Experience({ item }: { item: ExperienceItem }) {
 function Project({ item }: { item: ProjectItem }) {
   return (
     <div className="space-y-0.5">
-      <ItemHeader title={item.name} period={item.period} />
+      <ItemHeader columns={[item.name, item.type]} period={item.period} />
       {hasText(item.description) && <p>{item.description}</p>}
       {hasText(item.techStack) && (
         <p>
@@ -151,13 +179,11 @@ export function ResumeReadonly({ data, photoBase64 }: { data: ResumeData; photoB
         <Section title="教育经历">
           <div className="space-y-1">
             {data.education.map((item, index) => (
-              <div key={index} className="flex items-baseline justify-between gap-3">
-                <span className="font-bold">{item.school}</span>
-                <span>
-                  {[item.degree, item.major].filter(hasText).join(' · ')}
-                </span>
-                <Time>{item.period}</Time>
-              </div>
+              <ItemHeader
+                key={index}
+                columns={[item.school, item.degree, item.major]}
+                period={item.period}
+              />
             ))}
           </div>
         </Section>
@@ -165,13 +191,7 @@ export function ResumeReadonly({ data, photoBase64 }: { data: ResumeData; photoB
 
       {data.skills.some((skill) => hasText(skill.text)) && (
         <Section title="专业技能">
-          <div className="space-y-0.5">
-            {data.skills
-              .filter((skill) => hasText(skill.text))
-              .map((skill, index) => (
-                <p key={index}>{skill.text}</p>
-              ))}
-          </div>
+          <Points points={data.skills.map((skill) => skill.text)} />
         </Section>
       )}
 

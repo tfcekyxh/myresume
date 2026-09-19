@@ -106,6 +106,8 @@ export const SECTION_TITLE = {
 export const ITEM_TITLE = {
   fontSizePt: FONT_SIZE_PT.itemTitle,
   bold: true,
+  /** 第 2、3 栏的起始位置，沿用原文档的制表位 pos=2000/2800 twips（约 3.5cm / 4.9cm） */
+  columnStartsCm: [3.5, 4.9],
 } as const
 
 /** 时间文字，灰色。 */

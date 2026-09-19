@@ -219,8 +219,13 @@ export function ProjectsForm() {
               onRemove={() => remove(index)}
             >
               <div className="space-y-3">
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-3 gap-3">
                   <TextField label="项目名称" placeholder="项目名称" {...register(`projects.${index}.name`)} />
+                  <TextField
+                    label="项目类型"
+                    placeholder="如 全栈项目"
+                    {...register(`projects.${index}.type`)}
+                  />
                   <TextField
                     label="起止时间"
                     placeholder="如 2023.03 - 2023.09"
@@ -247,7 +252,7 @@ export function ProjectsForm() {
 
       <AddButton
         onClick={() =>
-          append({ name: '', period: '', description: '', techStack: '', points: [] })
+          append({ name: '', type: '', period: '', description: '', techStack: '', points: [] })
         }
       >
         添加项目经历

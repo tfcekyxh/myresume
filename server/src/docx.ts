@@ -19,6 +19,7 @@ import {
   FONT,
   FONT_SIZE_PT,
   INDENT,
+  ITEM_TITLE,
   LINE_SPACING,
   PAGE,
   PHOTO,
@@ -38,7 +39,8 @@ import {
  * 避免两条渲染路径不一致。
  */
 
-const hasText = (value: string | null | undefined) => (value ?? '').trim().length > 0
+const hasText = (value: string | null | undefined): value is string =>
+  (value ?? '').trim().length > 0
 
 /** docx 的图片尺寸按 96 DPI 的像素算，这里把 cm 换算过去。 */
 const cmToPx = (cm: number) => Math.round((cm / 2.54) * 96)
@@ -52,14 +54,24 @@ const NO_BORDERS = {
   insideVertical: { style: BorderStyle.NONE, size: 0, color: 'auto' },
 } as const
 
-/** 正文段落的通用格式：字体、行距、左右缩进。 */
-function bodyRun(text: string, options: { bold?: boolean; size?: number; color?: string } = {}) {
+/**
+ * 正文段落的通用格式：字体、行距、左右缩进。
+ *
+ * shading 是文字底纹（只盖住文字本身），段落底纹会铺满整行，这里不用。
+ */
+function bodyRun(
+  text: string,
+  options: { bold?: boolean; size?: number; color?: string; shading?: string } = {}
+) {
   return new TextRun({
     text,
     font: FONT.body,
     size: ptToHalfPoints(options.size ?? FONT_SIZE_PT.body),
     bold: options.bold,
     color: options.color ?? COLOR.bodyText,
+    shading: options.shading
+      ? { type: ShadingType.CLEAR, fill: options.shading.slice(1) }
+      : undefined,
   })
 }
 
@@ -75,11 +87,22 @@ function paragraph(
   })
 }
 
-/** 章节标题：白字黑底，段落下边框。 */
+/** 章节之间的空行：占一行高度、无内容。 */
+function spacer() {
+  return new Paragraph({
+    spacing: { line: lineSpacingToDocxLine(LINE_SPACING) },
+    children: [],
+  })
+}
+
+/**
+ * 章节标题：白字黑底，段落下边框。
+ *
+ * 黑底用文字底纹，只盖住标题文字；下边框挂在段落上，铺满整行。
+ */
 function sectionTitle(text: string) {
   return new Paragraph({
     spacing: { line: lineSpacingToDocxLine(LINE_SPACING) },
-    shading: { type: ShadingType.CLEAR, fill: SECTION_TITLE.backgroundColor.slice(1) },
     border: {
       bottom: {
         style: BorderStyle.SINGLE,
@@ -92,6 +115,7 @@ function sectionTitle(text: string) {
         bold: true,
         size: SECTION_TITLE.fontSizePt,
         color: SECTION_TITLE.textColor,
+        shading: SECTION_TITLE.backgroundColor,
       }),
     ],
   })
@@ -116,29 +140,45 @@ function pointParagraphs(points: string[], instance: number) {
     )
 }
 
-/** 条目头一行：左侧粗体标题 + 灰色时间，用制表位右对齐时间。 */
-function itemHeader(title: string, period?: string) {
-  const runs = [bodyRun(title, { bold: true, size: FONT_SIZE_PT.itemTitle })]
+/** 正文栏宽（页面宽度减去左右页边距）。 */
+const CONTENT_WIDTH_CM = PAGE.widthCm - PAGE.marginLeftCm - PAGE.marginRightCm
 
-  if (hasText(period)) {
-    runs.push(
-      new TextRun({
-        text: `\t${period}`,
-        font: FONT.body,
-        size: ptToHalfPoints(FONT_SIZE_PT.body),
-        color: COLOR.timeText,
-      })
-    )
-  }
+/** 灰色时间文字。 */
+function timeRun(text: string) {
+  return new TextRun({
+    text,
+    font: FONT.body,
+    size: ptToHalfPoints(FONT_SIZE_PT.body),
+    color: COLOR.timeText,
+  })
+}
+
+/**
+ * 条目标题行：左侧若干栏用制表位排开，首栏粗体，时间用右制表位靠右。
+ *
+ * 空栏会被跳过，所以某栏没填时后面的栏会顶上来，不会留下空档。
+ */
+function titleRow(columns: (string | undefined)[], period?: string) {
+  const parts = columns.filter(hasText)
+  const runs = [bodyRun(parts[0] ?? '', { bold: true, size: FONT_SIZE_PT.itemTitle })]
+
+  for (const part of parts.slice(1)) runs.push(bodyRun(`\t${part}`))
+  if (hasText(period)) runs.push(timeRun(`\t${period}`))
 
   return paragraph(runs, {
-    tabStops: [{ type: 'right', position: cmToTwips(PAGE.widthCm - PAGE.marginLeftCm - PAGE.marginRightCm - INDENT.bodyCm * 2) }],
+    tabStops: [
+      ...ITEM_TITLE.columnStartsCm.slice(0, parts.length - 1).map((cm) => ({
+        type: 'left' as const,
+        position: cmToTwips(cm),
+      })),
+      { type: 'right', position: cmToTwips(CONTENT_WIDTH_CM) },
+    ],
   })
 }
 
 function experienceBlocks(item: ExperienceItem, instance: number) {
-  const heading = [item.role, item.company].filter(hasText).join(' · ')
-  const blocks = [itemHeader(heading, item.period)]
+  // 公司在前、岗位在后，时间靠右，共三栏
+  const blocks = [titleRow([item.company, item.role], item.period)]
 
   if (hasText(item.summary)) blocks.push(paragraph([bodyRun(item.summary ?? '')]))
   blocks.push(...pointParagraphs(item.points, instance))
@@ -147,7 +187,8 @@ function experienceBlocks(item: ExperienceItem, instance: number) {
 }
 
 function projectBlocks(item: ProjectItem, instance: number) {
-  const blocks = [itemHeader(item.name, item.period)]
+  // 项目名 / 项目类型 / 时间 三栏，描述与技术栈各自单独一行
+  const blocks = [titleRow([item.name, item.type], item.period)]
 
   if (hasText(item.description)) blocks.push(paragraph([bodyRun(item.description)]))
   if (hasText(item.techStack)) {
@@ -218,34 +259,43 @@ function buildChildren(data: ResumeData, photoBase64: string | null) {
   if (data.education.length > 0) {
     children.push(sectionTitle('教育经历'))
     for (const item of data.education) {
-      children.push(
-        itemHeader(item.school, item.period),
-        paragraph([bodyRun([item.degree, item.major].filter(hasText).join(' · '))])
-      )
+      children.push(titleRow([item.school, item.degree, item.major], item.period))
     }
+    children.push(spacer())
   }
 
   const skills = data.skills.filter((skill) => hasText(skill.text))
   if (skills.length > 0) {
     children.push(sectionTitle('专业技能'))
-    // 专业技能无编号
-    for (const skill of skills) children.push(paragraph([bodyRun(skill.text)]))
+    children.push(...pointParagraphs(skills.map((skill) => skill.text), numberingInstance++))
+    children.push(spacer())
   }
 
   if (data.work.length > 0) {
     children.push(sectionTitle('工作经历'))
-    for (const item of data.work) children.push(...experienceBlocks(item, numberingInstance++))
+    data.work.forEach((item, i) => {
+      if (i > 0) children.push(spacer())
+      children.push(...experienceBlocks(item, numberingInstance++))
+    })
+    children.push(spacer())
   }
 
   if (data.internship.length > 0) {
     children.push(sectionTitle('实习经历'))
-    for (const item of data.internship)
+    data.internship.forEach((item, i) => {
+      if (i > 0) children.push(spacer())
       children.push(...experienceBlocks(item, numberingInstance++))
+    })
+    children.push(spacer())
   }
 
   if (data.projects.length > 0) {
     children.push(sectionTitle('项目经历'))
-    for (const item of data.projects) children.push(...projectBlocks(item, numberingInstance++))
+    data.projects.forEach((item, i) => {
+      if (i > 0) children.push(spacer())
+      children.push(...projectBlocks(item, numberingInstance++))
+    })
+    children.push(spacer())
   }
 
   if (hasText(data.footer)) {

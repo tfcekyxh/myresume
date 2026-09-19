@@ -21,7 +21,9 @@ export function ResumeTabs({ resumeId, active }: { resumeId: string; active: Tab
       {TABS.map((tab) => {
         const isActive = tab.key === active
         const className = cn(
-          '-mb-px border-b-2 px-3 py-2 text-sm transition-colors',
+          // first:pl-0 去掉首个标签的左内边距：文字与标题、表单左边缘对齐，
+          // 下划线也不会像用负外边距那样往左溢出容器
+          '-mb-px border-b-2 px-3 py-2 text-sm transition-colors first:pl-0',
           isActive
             ? 'border-primary font-medium text-foreground'
             : 'border-transparent text-muted-foreground hover:border-muted-foreground/40 hover:text-foreground'

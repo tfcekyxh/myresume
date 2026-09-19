@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { ApiError } from '@/lib/api'
 import { useCurrentUser, useLogin } from '@/lib/auth'
+import { lastResumeEditTarget } from '@/lib/last-resume'
 
 const loginSchema = z.object({
   username: z.string().min(1, '请输入用户名'),
@@ -27,17 +28,18 @@ export function LoginPage() {
     defaultValues: { username: '', password: '' },
   })
 
-  const from = (location.state as { from?: string } | null)?.from ?? '/resumes'
+  // 被拦下来的路径优先，否则回最近编辑的那份简历
+  const from = (location.state as { from?: string } | null)?.from
 
   // 已登录直接放行，避免重复登录
   if (!isPending && user) {
-    return <Navigate to={from} replace />
+    return <Navigate to={from ?? lastResumeEditTarget(user.username)} replace />
   }
 
   const onSubmit = form.handleSubmit(async (values) => {
     try {
-      await login.mutateAsync(values)
-      navigate(from, { replace: true })
+      const loggedIn = await login.mutateAsync(values)
+      navigate(from ?? lastResumeEditTarget(loggedIn.username), { replace: true })
     } catch (err) {
       form.setError('root', {
         message: err instanceof ApiError ? err.message : '登录失败，请稍后重试',

@@ -13,6 +13,7 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { useCurrentUser, useLogout } from '@/lib/auth'
+import { forgetLastResume } from '@/lib/last-resume'
 import {
   useCreateResume,
   useDeleteResume,
@@ -107,7 +108,8 @@ export function ResumeListPage() {
 
   async function handleLogout() {
     await logout.mutateAsync()
-    navigate('/login', { replace: true })
+    // 同编辑页：整页跳转，避免 RequireAuth 把 from 带进登录页
+    window.location.assign('/login')
   }
 
   async function handleCreate(title: string) {
@@ -125,6 +127,8 @@ export function ResumeListPage() {
   async function handleDelete() {
     if (!deleting) return
     await remove.mutateAsync(deleting.id)
+    // 删掉的正好是登录默认要进的那份，就清掉记录，免得下次登录落到不存在的简历
+    if (user) forgetLastResume(user.username, deleting.id)
     setDeleting(null)
   }
 

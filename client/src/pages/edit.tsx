@@ -1,18 +1,27 @@
-import { Link, useNavigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Link } from 'react-router-dom'
 import { Button } from '@/components/ui/button'
 import { ResumeForm } from '@/components/resume-form'
 import { useResume } from '@/components/resume-gate'
 import { useCurrentUser, useLogout } from '@/lib/auth'
+import { rememberLastResume } from '@/lib/last-resume'
 
 export function EditPage() {
   const { resumeId, title } = useResume()
   const { data: user } = useCurrentUser()
   const logout = useLogout()
-  const navigate = useNavigate()
+
+  // 记录最近编辑的简历，登录默认跳回这里
+  useEffect(() => {
+    if (user) rememberLastResume(user.username, resumeId)
+  }, [user, resumeId])
 
   async function handleLogout() {
     await logout.mutateAsync()
-    navigate('/login', { replace: true })
+    // 整页跳转而不是 navigate：登出会把 user 置空，当前受保护路由随即重新渲染，
+    // RequireAuth 会抢先把 from 写进 /login 的历史条目，下次登录就被它带偏。
+    // 整页跳转同时清掉上一个用户残留的查询缓存。
+    window.location.assign('/login')
   }
 
   return (

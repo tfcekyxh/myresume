@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test'
 import {
   USERNAME,
+  PASSWORD,
   clearResumes,
   loginAsDefaultUser,
   openEdit,
@@ -52,6 +53,23 @@ test('登出后无法再访问受保护页面', async ({ page }) => {
 
   await page.goto('/resumes')
   await expect(page).toHaveURL('/login')
+})
+
+test('登录默认进入最近编辑的简历', async ({ page }) => {
+  await loginAsDefaultUser(page)
+  await clearResumes()
+  const edited = await createResume(page, '前端简历')
+  await createResume(page, '后端简历')
+  await openEdit(page, edited)
+
+  await page.getByRole('button', { name: '登出' }).click()
+  await expect(page).toHaveURL('/login')
+
+  await page.getByLabel('用户名').fill(USERNAME)
+  await page.getByLabel('密码').fill(PASSWORD)
+  await page.getByRole('button', { name: '登录' }).click()
+
+  await expect(page).toHaveURL(`/resumes/${edited}/edit`)
 })
 
 test('登录后可在编辑页与版本记录、打印预览之间导航', async ({ page }) => {

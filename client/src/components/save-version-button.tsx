@@ -52,7 +52,6 @@ export function SaveVersionButton({ resumeId, flushDraft, buttonClassName }: Pro
             <Label htmlFor="version-note">备注（可选）</Label>
             <Textarea
               id="version-note"
-              rows={2}
               placeholder="如：投递前端岗的版本"
               value={note}
               onChange={(e) => setNote(e.target.value)}

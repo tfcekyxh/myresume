@@ -124,7 +124,6 @@ export function SkillsForm() {
               >
                 <TextAreaField
                   label="技能描述"
-                  rows={2}
                   placeholder="如 熟悉 TypeScript / React，有大型前端项目经验"
                   {...register(`skills.${index}.text`)}
                 />
@@ -171,7 +170,6 @@ function ExperienceForm({ module, title }: { module: ExperienceModule; title: st
                 </div>
                 <TextAreaField
                   label="概述（可选）"
-                  rows={2}
                   placeholder="一句话概括这段经历"
                   {...register(`${module}.${index}.summary`)}
                 />
@@ -234,7 +232,6 @@ export function ProjectsForm() {
                 </div>
                 <TextAreaField
                   label="项目描述"
-                  rows={2}
                   placeholder="项目背景与目标"
                   {...register(`projects.${index}.description`)}
                 />
@@ -268,7 +265,6 @@ export function FooterForm() {
     <ModuleCard title="页脚">
       <TextAreaField
         label="页脚文字"
-        rows={2}
         placeholder="留空则不输出"
         {...register('footer')}
       />

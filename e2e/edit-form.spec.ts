@@ -76,6 +76,39 @@ test('拖拽可调整条目顺序，表单值顺序与界面一致', async ({ pa
   ])
 })
 
+test('多行文本框随输入自动增高，内容多时无需框内滚动', async ({ page }) => {
+  // 添加技能，找到它的多行输入框
+  await page.getByRole('button', { name: '添加技能' }).click()
+  const box = page.getByPlaceholder('如 熟悉 TypeScript / React，有大型前端项目经验')
+  await expect(box).toBeVisible()
+
+  const heightBefore = await box.evaluate((el) => el.getBoundingClientRect().height)
+
+  // 输入多行内容后高度应明显增长，且不出现内部纵向滚动条
+  await box.fill(Array.from({ length: 8 }, (_, i) => `第${i + 1}行内容`).join('\n'))
+  const heightAfter = await box.evaluate((el) => el.getBoundingClientRect().height)
+  expect(heightAfter).toBeGreaterThan(heightBefore)
+
+  const scrollable = await box.evaluate(
+    (el) => el.scrollHeight > el.clientHeight + 1
+  )
+  expect(scrollable).toBe(false)
+
+  // 程序性赋值（不走 input 事件）也要跟着撑高：走调试面板写回一段长文本
+  await page.getByText('表单数据（调试用）').click()
+  await page.getByRole('button', { name: '编辑' }).click()
+  const json = page.getByLabel('表单数据')
+  const data = JSON.parse(await json.inputValue())
+  data.skills[0].text = Array.from({ length: 12 }, (_, i) => `写回的第${i + 1}行`).join('\n')
+  await json.fill(JSON.stringify(data, null, 2))
+  await page.getByRole('button', { name: '应用' }).click()
+
+  await expect(box).toHaveValue(data.skills[0].text)
+  const heightAfterApply = await box.evaluate((el) => el.getBoundingClientRect().height)
+  expect(heightAfterApply).toBeGreaterThan(heightAfter)
+  expect(await box.evaluate((el) => el.scrollHeight > el.clientHeight + 1)).toBe(false)
+})
+
 test('可在表单数据面板编辑 JSON 并写回表单', async ({ page }) => {
   await page.getByRole('button', { name: '添加教育经历' }).click()
   await page.getByLabel('学校').fill('A大学')

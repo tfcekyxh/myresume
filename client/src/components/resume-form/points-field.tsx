@@ -39,7 +39,6 @@ export function PointsField({ name, label = '要点' }: PointsFieldProps) {
                 {index + 1}.
               </span>
               <Textarea
-                rows={2}
                 placeholder="描述一条内容"
                 value={value}
                 onChange={(e) => {

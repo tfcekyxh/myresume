@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { TextAreaField, TextField } from './fields'
 import { PointsField } from './points-field'
+import { PhotoField } from './photo-field'
 import { SortableItem, SortableList } from './sortable-list'
 
 /** 简历各模块的表单分组。共用外层 form，通过 useFormContext 读写字段。 */
@@ -58,10 +59,8 @@ export function BasicForm() {
         ))}
       </div>
 
-      {/* 证件照上传在 Step 10 实现，这里先留占位 */}
-      <div className="rounded-lg border border-dashed p-4 text-center text-xs text-muted-foreground">
-        证件照上传（后续步骤实现）
-      </div>
+      {/* 证件照单独走照片接口，不放进简历 JSON */}
+      <PhotoField />
     </ModuleCard>
   )
 }

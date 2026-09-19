@@ -128,17 +128,26 @@ export const HEADER = {
   columnGapCm: 0.75,
 } as const
 
-/** 证件照：尺寸、压缩参数。前端压缩与后端导出共用。 */
+/**
+ * 证件照：显示尺寸与压缩参数。前端压缩与后端 docx 导出共用。
+ *
+ * 像素尺寸由显示尺寸与 DPI 推导（见下方 PHOTO_PIXEL_*），
+ * 不要另填一套「标准一寸照 295×413」之类的值——那个比例是 0.714，
+ * 与这里的 1.98:2.2 = 0.9 不同，压缩后插入会横向拉伸。
+ */
 export const PHOTO = {
   displayWidthCm: 1.98,
   displayHeightCm: 2.2,
-  /** 原图上下各裁剪的比例，压缩时保持构图 */
-  cropTopRatio: 0.1025,
-  cropBottomRatio: 0.1025,
+  /** 压缩目标密度，300 DPI 打印足够清晰 */
+  dpi: 300,
   jpegQuality: 0.85,
   /** base64 字节数上限，超限由后端拒绝 */
   maxBase64Bytes: 500 * 1024,
 } as const
+
+/** 压缩后的目标像素尺寸，比例与显示尺寸一致。 */
+export const PHOTO_PIXEL_WIDTH = Math.round((PHOTO.displayWidthCm / 2.54) * PHOTO.dpi)
+export const PHOTO_PIXEL_HEIGHT = Math.round((PHOTO.displayHeightCm / 2.54) * PHOTO.dpi)
 
 // ---------- 前端 CSS 变量 ----------
 

@@ -10,7 +10,7 @@ export type ResumeRecord = {
   updatedAt: string
 }
 
-const resumeKey = ['resume', 'current'] as const
+export const resumeKey = ['resume', 'current'] as const
 
 /**
  * 当前用户的简历（含草稿内容）。不存在时后端会自动建一份。

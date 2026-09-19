@@ -80,6 +80,7 @@ GET    /api/auth/me
 GET    /api/resumes/current
 PATCH  /api/resumes/:id/draft
 
+GET    /api/resumes/:id/photo
 POST   /api/resumes/:id/photo
 
 GET    /api/resumes/:id/versions
@@ -157,7 +158,7 @@ POST   /api/export/docx
 
 - 照片以 base64 存在独立的 `photos` 表，`resumes.data` 与版本快照里都**不存照片本体**，只存 `photo_id` 引用。不做文件服务与静态资源鉴权。
 - 照片因此既不随版本重复存储，又仍然受版本控制：查看历史版本时按该版本的 `photo_id` 取图，恢复版本时照片一起回到当时那张。
-- 上传时前端必须先用 canvas 压缩，不存原图：缩放到目标显示尺寸（原简历中证件照为 1.98 × 2.2 cm，原图上下各裁剪 10.25%，浮动于头部右侧），转 JPEG base64，控制在 100 KB 以内。
+- 上传时前端必须先用 canvas 压缩，不存原图：按目标宽高比**居中裁剪（cover）**再缩放（不要直接拉伸，任意比例的输入会变形），转 JPEG base64，控制在 100 KB 以内。目标像素由显示尺寸与 300 DPI 推导（1.98 × 2.2 cm → 234 × 260），**不要用标准一寸照的 295×413**，那个比例 0.714 与 1.98:2.2 = 0.9 不符，插入后会横向拉伸。
 - 上传接口需比对内容（如比对 base64 哈希）与当前照片是否相同，相同则复用现有 `photo_id`，避免反复上传同一张图导致 `photos` 堆积。
 - docx 生成与 `/preview` 页渲染时，照片按 `photo_id` 单独读取后并入输出。
 

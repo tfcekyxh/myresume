@@ -75,3 +75,34 @@ test('拖拽可调整条目顺序，表单值顺序与界面一致', async ({ pa
     'A大学',
   ])
 })
+
+test('可在表单数据面板编辑 JSON 并写回表单', async ({ page }) => {
+  await page.getByRole('button', { name: '添加教育经历' }).click()
+  await page.getByLabel('学校').fill('A大学')
+
+  await page.getByText('表单数据（调试用）').click()
+  await page.getByRole('button', { name: '编辑' }).click()
+  const json = page.getByLabel('表单数据')
+
+  // 非法 JSON 被拒绝：保留编辑态和输入
+  await json.fill('{ 这不是合法 JSON')
+  await page.getByRole('button', { name: '应用' }).click()
+  await expect(page.getByText('JSON 格式有误，请检查后再应用')).toBeVisible()
+  await expect(json).toHaveValue('{ 这不是合法 JSON')
+
+  // 重新进入编辑态拿到当前表单值，改成合法 JSON：改第一条学校，再加一条教育经历
+  await page.getByRole('button', { name: '取消' }).click()
+  await page.getByRole('button', { name: '编辑' }).click()
+  const data = JSON.parse(await json.inputValue())
+  data.education[0].school = 'C大学'
+  data.education.push({ ...data.education[0], school: 'D大学' })
+  await json.fill(JSON.stringify(data, null, 2))
+
+  await page.getByRole('button', { name: '应用' }).click()
+
+  // 回到只读态，表单字段同步更新
+  await expect(page.getByRole('button', { name: '编辑' })).toBeVisible()
+  await expect(page.getByLabel('学校')).toHaveCount(2)
+  await expect(page.getByLabel('学校').first()).toHaveValue('C大学')
+  await expect(page.getByLabel('学校').nth(1)).toHaveValue('D大学')
+})

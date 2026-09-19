@@ -1,7 +1,9 @@
+import { useState } from 'react'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
 import { useResume } from '@/components/resume-gate'
+import { Button } from '@/components/ui/button'
 import { ExportDocxButton } from '@/components/export-docx-button'
 import { SaveVersionButton } from '@/components/save-version-button'
 import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
@@ -71,16 +73,83 @@ function ErrorSummary() {
   )
 }
 
-/** 表单数据只读展示，便于本阶段在浏览器里核对结构与条目顺序。接后端后可移除。 */
+/**
+ * 表单数据面板：默认只读展示 JSON，点「编辑」可直接改文本并写回表单。
+ *
+ * 便于本阶段在浏览器里核对结构与条目顺序，或批量改数据；接后端后可移除。
+ */
 function DebugPanel() {
+  const form = useFormContext<ResumeData>()
   const values = useWatch<ResumeData>()
+  const [editing, setEditing] = useState(false)
+  const [text, setText] = useState('')
+  const [error, setError] = useState<string | null>(null)
+
+  function startEdit() {
+    setText(JSON.stringify(values, null, 2))
+    setError(null)
+    setEditing(true)
+  }
+
+  /** 解析并校验文本，通过后整体写回表单。 */
+  function apply() {
+    let parsed: unknown
+    try {
+      parsed = JSON.parse(text)
+    } catch {
+      setError('JSON 格式有误，请检查后再应用')
+      return
+    }
+
+    const result = resumeDataSchema.safeParse(parsed)
+    if (!result.success) {
+      setError(result.error.issues[0]?.message ?? '内容不符合要求')
+      return
+    }
+
+    form.reset(result.data)
+    setError(null)
+    setEditing(false)
+  }
 
   return (
     <details className="rounded-lg border p-3">
       <summary className="cursor-pointer text-sm text-muted-foreground">表单数据（调试用）</summary>
-      <pre className="mt-3 max-h-80 overflow-auto text-xs">
-        {JSON.stringify(values, null, 2)}
-      </pre>
+
+      {editing ? (
+        <div className="mt-3 space-y-2">
+          <textarea
+            aria-label="表单数据"
+            className="h-80 w-full resize-y rounded border bg-transparent p-2 font-mono text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            value={text}
+            onChange={(e) => setText(e.target.value)}
+          />
+          {error && <p className="text-xs text-destructive">{error}</p>}
+          <div className="flex gap-2">
+            <Button type="button" size="sm" onClick={apply}>
+              应用
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setError(null)
+                setEditing(false)
+              }}
+            >
+              取消
+            </Button>
+          </div>
+        </div>
+      ) : (
+        <div className="mt-3 space-y-2">
+          <pre className="max-h-80 overflow-auto text-xs">{JSON.stringify(values, null, 2)}</pre>
+          <Button type="button" variant="outline" size="sm" onClick={startEdit}>
+            编辑
+          </Button>
+        </div>
+      )}
     </details>
   )
 }

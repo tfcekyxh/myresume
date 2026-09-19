@@ -115,6 +115,8 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **Start Command 必须显式指定**：Railpack 会自动把 Vite 产物识别成纯静态站点并改用 Caddy 托管，那样 Express 根本不启动、接口全挂。显式指定才能关掉该行为。
 - **环境变量**（面板服务变量）：`DATABASE_URL`（引用 Postgres 服务的 `${{Postgres.DATABASE_URL}}`）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`NODE_ENV=production`。`PORT` 由平台注入。
 - **`prisma` 与 `dotenv` 放在 `dependencies`（而非 devDependencies）**：`prisma.config.ts` 顶层 import 了 `dotenv`，且 `prisma migrate deploy` 要在 pre-deploy 阶段的应用镜像里可用。
+- **Prisma Client 生成到源码目录**（`server/src/generated/`，见 `schema.prisma` 的 generator `output`），不放默认的 `node_modules/.prisma`。默认位置依赖 postinstall，而平台 install 阶段拿不到 schema、且 `node_modules` 可能被重建，运行时就会报 `Cannot find module '.prisma/client/default'`。该目录已 gitignore，构建时必须先跑 `db:generate`。引用点：`server/src/db.ts`、`server/prisma/seed.ts`、`e2e/db.ts` 三处从生成目录导入。
+- **`@prisma/client-runtime-utils` 需显式声明为 server 依赖**：生成代码运行时会 require 它，而 Bun 隔离安装不会把传递依赖提升到顶层，源码目录里的生成代码就解析不到。
 - **登录账号需手工 seed 一次**：`db:seed` 是按 username 幂等 upsert 且会更新密码，放进部署流程等于每次部署重置密码。
 - **迁移没跑的表现**：登录报 `P2021: The table public.User does not exist`，即 pre-deploy 未执行。注意 Railpack 会自动识别根 `package.json` 的 build/start 脚本，所以「部署成功、页面能打开」**不代表**迁移跑过。
 - e2e 跑的是开发模式，静态托管分支不会生效，因此该套件**不覆盖**生产托管与 SPA fallback——这部分靠本地生产模式启动 + 平台实测验证。

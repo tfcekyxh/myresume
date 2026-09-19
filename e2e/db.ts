@@ -1,4 +1,4 @@
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from '../server/src/generated/prisma'
 import { PrismaPg } from '@prisma/adapter-pg'
 import { execFileSync } from 'node:child_process'
 import { config } from 'dotenv'

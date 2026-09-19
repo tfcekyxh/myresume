@@ -228,7 +228,7 @@ export default defineConfig({
 PrismaClient 不再自己读 `DATABASE_URL`，否则运行时报错：
 
 ```ts
-import { PrismaClient } from '@prisma/client'
+import { PrismaClient } from './generated/prisma'
 import { PrismaPg } from '@prisma/adapter-pg'
 
 const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
@@ -255,17 +255,18 @@ CLI 与 client 版本不一致会出问题。当前锁定 `prisma@7.10.0` 与 `@
 
 ## Prisma + Bun 注意点
 
-Bun 默认不执行依赖的 postinstall 脚本，而 `@prisma/client` 依赖它生成 client。若安装后报 `Cannot find module '.prisma/client/default'`，两种处理方式：
+**Prisma Client 生成到源码目录**（`schema.prisma` 的 generator 设置 `output = "../src/generated/prisma"`），不放到默认的 `node_modules/.prisma`：
 
-1. 根 `package.json` 声明：
+- 默认位置依赖 `@prisma/client` 的 postinstall 生成；Bun 默认不执行依赖的 postinstall（靠根 `package.json` 的 `trustedDependencies` 才跑），且部署平台的 install 阶段往往只放 `package.json` 与锁文件、拿不到 schema，运行时就会报 `Cannot find module '.prisma/client/default'`。
+- 生成到源码目录则产物随代码一起进镜像，不依赖 postinstall 时机、也不怕 `node_modules` 被重建。
 
-```json
-"trustedDependencies": ["@prisma/client", "prisma"]
-```
+由此的引用方式：
 
-2. 手动执行 `bun run db:generate`。
+- 业务代码从生成目录导入：`import { PrismaClient } from './generated/prisma'`（见 `server/src/db.ts`、`server/prisma/seed.ts`、`e2e/db.ts`）。
+- 生成目录 `server/src/generated/` 已加入 `.gitignore`；它由 `db:generate` 产出，构建时先跑它再构建。
+- 生成代码运行时会 require `@prisma/client-runtime-utils`（Bun 隔离安装不会把它提升到顶层），因此要在 `server/package.json` 显式声明该依赖。
 
-注意 Bun 采用隔离安装，依赖装在各自 workspace 的 `node_modules`，因此 Prisma 命令要在 `server/` 目录下执行（或用根目录的 `db:*` 脚本转发）。
+Bun 采用隔离安装，依赖装在各自 workspace 的 `node_modules`，因此 Prisma 命令要在 `server/` 目录下执行（或用根目录的 `db:*` 脚本转发）。
 
 <br />
 

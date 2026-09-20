@@ -22,7 +22,7 @@
 | 鉴权 | express-session + connect-pg-simple（数据库 Session） |
 | 密码哈希 | `Bun.password`（内置 argon2id） |
 | docx 导出 | `docx` 库，代码构建 |
-| PDF 导出 | 不做服务端转换：导出 docx 后用本机 Word/WPS 打开、另存为 PDF |
+| PDF 导出 | `pdfkit`，服务端直接绘制并完整嵌入字体（见 [pdf-export-plan.md](./pdf-export-plan.md)） |
 | 证件照 | base64 存 `photos` 表，简历与快照只存 `photo_id` 引用，不做文件服务 |
 | 工程结构 | Bun workspaces：`client/` + `server/` + `shared/` |
 
@@ -37,9 +37,9 @@ client: react react-dom react-router-dom tailwindcss
         lucide-react
         （另有 shadcn add 生成的 radix 组件）
 
-server: express zod express-session connect-pg-simple docx
+server: express zod express-session connect-pg-simple docx pdfkit
         @prisma/client @prisma/adapter-pg
-        -d prisma dotenv @types/express-session @types/connect-pg-simple
+        -d prisma dotenv @types/express-session @types/connect-pg-simple @types/pdfkit
 
 shared: zod
 ```
@@ -94,6 +94,7 @@ GET    /api/resumes/:id/versions/:versionId
 POST   /api/resumes/:id/versions/:versionId/restore
 
 POST   /api/resumes/:id/export/docx
+POST   /api/resumes/:id/export/pdf
 ```
 
 路径一律带 resume id，多份简历各自独立。
@@ -127,7 +128,7 @@ POST   /api/resumes/:id/export/docx
 
 ### 样式来源
 
-前端 CSS 与后端 docx 生成代码共用一份样式常量表（`shared/style-constants.ts`），改样式只改这一处，避免两条渲染路径不一致。
+前端 CSS 与后端 docx、PDF 生成代码共用一份样式常量表（`shared/style-constants.ts`），改样式只改这一处，避免多条渲染路径不一致。
 
 以下数值提取自现有 Word 简历（`20260913.docx`）：
 
@@ -154,12 +155,15 @@ POST   /api/resumes/:id/export/docx
 ### docx 导出
 
 - 用 `docx` 库以代码构建，样式参数从共用样式常量表读取。
+- 字体不内嵌：docx 只写字体名，由打开方的本机字体决定显示效果。曾尝试内嵌字体以保证跨机器一致，但 Mac 版 Word 无法可靠使用第三方嵌入字体（详见 [pdf-export-plan.md](./pdf-export-plan.md) 的排查记录），故维持「探测本机可用字体」的做法。
 
 ### PDF 导出
 
-- 不做服务端转换。浏览器渲染与 Word 排版无法对齐，因此不维护第二套渲染路径。
-- 流程：导出 docx → 用本机 Word / WPS 打开预览 → 另存为 PDF。
-- 若要改成服务端转换，需要 Dockerfile 装 LibreOffice（镜像 +600MB、转换吃 300MB 内存）并补齐中文字体，否则字体被静默替换，行宽与分页都会变。
+- 用 `pdfkit` 在服务端直接绘制，不经过 docx 中间产物，也不用浏览器打印。
+- 字体用 OFL 许可的思源黑体（Noto Sans SC）静态字重，存放于 `server/assets/fonts/`，完整嵌入 PDF，收件人无需安装字体。
+- PDFKit 输出时自动按实际用字子集化（实测 10.1MB 源字体 → 12.5KB PDF），因此仓库里放全量字体不会影响产出物体积。
+- 中文以 `CIDFontType2` + `Identity-H` 嵌入，并带 `ToUnicode` 映射，文本可复制、可搜索。
+- 不选 LibreOffice 转换：镜像 +400MB、需要 apt 依赖、冷启动慢，且仍依赖 docx 中间产物。
 
 ### 证件照
 

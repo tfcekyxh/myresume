@@ -29,7 +29,7 @@
 | 样式 | 单一模板，1:1 复刻现有 Word 简历 |
 | 版本 | 编辑自动存草稿 + 手动存档版本，可回滚 |
 | 技术栈 | 见 tech-stack.md |
-| 导出 | docx 由后端生成，用 Word/WPS 打开预览、另存 PDF，见 tech-stack.md |
+| 导出 | docx 与 PDF 均由后端生成：docx 用 `docx` 库构建（字体由打开方本机决定），PDF 用 PDFKit 直接绘制并内嵌字体，见 [tech-stack.md](./tech-stack.md) 与 [pdf-export-plan.md](./pdf-export-plan.md) |
 
 <br />
 

@@ -1,6 +1,6 @@
 # 实施计划
 
-配套文档：[project-scope.md](./project-scope.md)（需求与行为）、[tech-stack.md](./tech-stack.md)（选型与实现约定）
+配套文档：[project-scope.md](./project-scope.md)（需求与行为）、[tech-stack.md](./tech-stack.md)（选型与实现约定）、[pdf-export-plan.md](./pdf-export-plan.md)（PDF 导出实施方案）
 
 <br />
 
@@ -329,7 +329,7 @@
 
 **产出**
 
-- 走一遍完整链路：登录 → 填写 → 上传照片 → 自动保存 → 存档 → 改内容 → 恢复 → 导出 docx → 用 Word 另存 PDF
+- 走一遍完整链路：登录 → 填写 → 上传照片 → 自动保存 → 存档 → 改内容 → 恢复 → 导出 docx / 导出 PDF
 - 补齐加载态、错误提示、空状态
 - 启动说明（依赖安装、数据库、迁移、seed、开发与构建命令）
 
@@ -339,6 +339,83 @@
 - 冷启动按说明操作即可跑起来
 - e2e 用例覆盖全链路
 - 两份文档与实现无矛盾
+
+<br />
+
+## 阶段 G：PDF 导出
+
+详细方案见 [pdf-export-plan.md](./pdf-export-plan.md)（含选型对比、字体资源准备脚本、版式映射表）。
+
+**背景**：原方案「导出 docx → 用本机 Word/WPS 另存 PDF」依赖用户环境，且 Mac 版 Word 无法可靠使用 docx 内嵌字体（已完整排查，OOXML 结构逐项正确但 Word 仍部分回退）。改为服务端用 PDFKit 直接生成，字体嵌入由我们掌控。
+
+### Step 17　字体资源准备
+
+**目标**：产出可被 PDFKit 使用的思源黑体静态字重。
+
+**产出**
+
+- 从 Google Fonts 变量字体 `NotoSansSC[wght].ttf` 实例化出 Regular(400) / Bold(700)
+- **必须重建 name 表**：变量字体默认实例是 Thin(100)，不重建会让 family 名变成 `Noto Sans SC Thin`，字体匹配失败
+- 落到 `server/assets/fonts/`，附 `OFL.txt`
+
+**验证**
+
+- 用 fontTools 读回：family 名为 `Noto Sans SC`、字重 400/700、`cmap` 与 `glyf` 完整
+- PDFKit 注册后能渲染出正确的中英数混排
+
+<br />
+
+### Step 18　后端：PDF 生成
+
+**依赖**：Step 17 的字体、Step 6 的样式常量。
+
+**目标**：`POST /api/resumes/:id/export/pdf` 返回版式正确的 PDF。
+
+**产出**
+
+- `server/src/pdf.ts`：镜像 `server/src/docx.ts` 的结构，逐模块产出绘制指令
+- 字体在模块加载时注册一次，不每次请求读文件
+- 复用 `findOwnResume` / `parseResumeData` / 按 `photo_id` 取照片
+- 页面尺寸、页边距、字号、行距、缩进、颜色全部取自 `shared/style-constants.ts`
+
+**验证**
+
+- 多页简历分页合理、无内容截断
+- 中英数均正常，粗体标题真实加粗
+- 证件照位置与尺寸与 docx 版一致
+- 换一台没装思源黑体的机器打开，显示仍一致（字体已嵌入）
+
+<br />
+
+### Step 19　前端：导出 PDF 按钮
+
+**依赖**：Step 18 的接口。
+
+**产出**
+
+- 编辑页在「导出 Word」旁新增「导出 PDF」，外观一致
+- 复用先 `flushDraft()` 再请求的逻辑，避免导出旧内容
+- 带 loading 与错误提示
+
+**验证**
+
+- 点击后触发下载，文件名含姓名与日期
+- 未落库的改动会被先保存再导出
+- 手机上按钮不溢出
+
+<br />
+
+### Step 20　PDF 导出 e2e
+
+**产出**
+
+- `e2e/export-pdf.spec.ts`，按现有约定：只写端到端、一个用例讲一件事
+- 断言下载触发、文件以 `%PDF` 开头、体积合理
+- 断言 PDF 内含嵌入字体流（`FontFile2`）且 `BaseFont` 含 `NotoSansSC`
+
+**验证**
+
+- `bun run test:e2e` 全绿
 
 <br />
 
@@ -353,5 +430,9 @@
 | `useFieldArray` 与 dnd-kit 顺序不同步 | Step 7 | 拖拽结束时调用 `move()` 而非直接改数组 |
 | 前端拿不到 resume id 就调后续接口 | Step 8、9 | 路由带 resume id，ResumeGate 据此拉取并下发 context，数据就绪后再渲染编辑页 |
 | 导出的 docx 照片用外链，收件人看不到图 | Step 15 | 照片必须 base64 内嵌，不沿用原文档的 link 方式 |
+| Mac 版 Word 无法使用 docx 内嵌字体 | Step 15 | 已完整排查确认为 Word 自身问题；docx 维持本机字体探测，跨机器一致性交给 PDF 导出 |
+| 排版逻辑变成 docx / PDF 两份 | Step 18 | 两侧只读 `shared/style-constants.ts`，禁止硬编码；改版式时同步检查 |
+| 变量字体实例化后 name 表带 Thin 后缀 | Step 17 | 显式重建 name 表并校验 family 名 |
+| PDF 分页与 docx 不一致 | Step 18 | 以 PDF 为准（它是交付物）；必要时对章节加保护性换行 |
 
 <br />

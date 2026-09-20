@@ -1,6 +1,6 @@
 # 项目约定
 
-简历 Web 应用：填表 → 自动存草稿 → 手动存版本 → 导出 docx（用 Word 打开预览、另存 PDF）。
+简历 Web 应用：填表 → 自动存草稿 → 手动存版本 → 导出 docx / PDF。
 
 ## 文档索引
 
@@ -8,7 +8,8 @@
 | --- | --- |
 | `project-scope.md` | 需求与行为、简历结构定义 |
 | `tech-stack.md` | 技术选型与实现约定、排版参数（样式来源） |
-| `impl-plan.md` | 分步实施计划（Step 1~16） |
+| `impl-plan.md` | 分步实施计划（Step 1~20） |
+| `pdf-export-plan.md` | PDF 导出实施方案（Step 17~20 详情） |
 
 改需求或新增实现约定前，先对应更新这几份文档。
 
@@ -21,7 +22,7 @@
 - 数据库：PostgreSQL（阿里云 RDS）
 - 鉴权：express-session + connect-pg-simple（数据库 Session）
 - 密码哈希：`Bun.password`（内置 argon2id）
-- 导出：`docx` 库代码构建；版式由 Word 渲染，不在浏览器里复刻
+- 导出：`docx` 库代码构建 docx；PDF 由服务端用 PDFKit 直接生成并内嵌字体（见 `pdf-export-plan.md`）
 - 工程：Bun workspaces：`client/` + `server/` + `shared/`
 
 ## 目录结构
@@ -30,6 +31,7 @@
 client/         React 前端
 server/          Express 后端 + Prisma
   .env          数据库连接串、SESSION_SECRET（不入库）
+  assets/fonts/ PDF 导出用的思源黑体静态字重 + OFL 许可
   prisma/        schema + migrations + seed.ts
 shared/          前后端共享：zod schema、类型、样式常量
 e2e/             Playwright 端到端测试
@@ -69,9 +71,12 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **简历结构**：只定义一份 zod schema 于 `shared/`，前端表单、后端校验、docx 生成三处复用。
 - **编辑页表单**：单层 `useForm<ResumeData>` + `zodResolver(resumeDataSchema)`，用 `FormProvider` 下发，各模块组件通过 `useFormContext` 读写。可多条目模块用 `useFieldArray` + dnd-kit，拖拽结束调 `move()` 而非直接改数组。
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
-- **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx 共同读取，禁止两侧硬编码。
+- **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx、PDF 共同读取，禁止任何一处硬编码。
 - **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
-- **不做浏览器打印预览**：曾经的 `/preview` 路由已删除。版式只在 `server/docx.ts` 里实现一份，导出后由 Word 渲染；浏览器渲染无法与 Word 对齐，维护两套只会互相打架。要看效果就用 Word/WPS 打开导出的 docx。
+- **不做浏览器打印预览**：曾经的 `/preview` 路由已删除，不要恢复。浏览器渲染的字体、行距、分页无法与 Word 对齐，维护两套只会互相打架。要看效果就打开导出的 docx。
+- **PDF 由服务端生成，不走 docx 中间产物**：用 PDFKit 在 `server/src/pdf.ts` 里直接绘制，字体用 OFL 许可的思源黑体（`server/assets/fonts/`）并完整嵌入，收件人无需装字体。PDFKit 输出时会自动按用字子集化，因此仓库里的全量字体不会让 PDF 变大。
+- **不要尝试把字体嵌入 docx**：已完整排查过（fontTable、关系、Content_Types、name 表、`w:sig`、cmap、完整字体与子集字体对比），OOXML 结构逐项正确，但 Mac 版 Word 仍会部分回退——这是 Word 自身的问题，不是我们的实现问题。docx 导出维持「探测本机字体」方案即可。
+- **变量字体不能直接用**：思源黑体官方包是变量字体，PDFKit 不支持；且其默认实例是 Thin(100)，实例化后若不重建 name 表，family 名会带 Thin 后缀导致字体匹配失败。静态字重的一次性生成脚本见 `pdf-export-plan.md`。
 - **docx 导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
 
 ## 简历结构（模块顺序固定）

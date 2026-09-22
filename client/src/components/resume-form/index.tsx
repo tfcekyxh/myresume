@@ -4,7 +4,7 @@ import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form
 import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
 import { useResume } from '@/components/resume-gate'
 import { Button } from '@/components/ui/button'
-import { ExportDocxButton } from '@/components/export-docx-button'
+import { ExportButton } from '@/components/export-button'
 import { SaveVersionButton } from '@/components/save-version-button'
 import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
 import {
@@ -183,8 +183,15 @@ export function ResumeForm() {
               flushDraft={flushDraft}
               buttonClassName="h-10 sm:h-8"
             />
-            <ExportDocxButton
+            <ExportButton
               resumeId={resumeId}
+              format="docx"
+              flushDraft={flushDraft}
+              buttonClassName="h-10 sm:h-8"
+            />
+            <ExportButton
+              resumeId={resumeId}
+              format="pdf"
               flushDraft={flushDraft}
               buttonClassName="h-10 sm:h-8"
             />

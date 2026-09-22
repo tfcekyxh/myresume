@@ -73,11 +73,31 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx、PDF 共同读取，禁止任何一处硬编码。
 - **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
-- **不做浏览器打印预览**：曾经的 `/preview` 路由已删除，不要恢复。浏览器渲染的字体、行距、分页无法与 Word 对齐，维护两套只会互相打架。要看效果就打开导出的 docx。
-- **PDF 由服务端生成，不走 docx 中间产物**：用 PDFKit 在 `server/src/pdf.ts` 里直接绘制，字体用 OFL 许可的思源黑体（`server/assets/fonts/`）并完整嵌入，收件人无需装字体。PDFKit 输出时会自动按用字子集化，因此仓库里的全量字体不会让 PDF 变大。
-- **不要尝试把字体嵌入 docx**：已完整排查过（fontTable、关系、Content_Types、name 表、`w:sig`、cmap、完整字体与子集字体对比），OOXML 结构逐项正确，但 Mac 版 Word 仍会部分回退——这是 Word 自身的问题，不是我们的实现问题。docx 导出维持「探测本机字体」方案即可。
+
+## 导出（docx / PDF 两条路径）
+
+两条路径**并存**，共用同一份版式常量与同一个前端按钮组件，但字体处理方式完全相反——这是本项目最容易踩坑的地方。
+
+|  | docx | PDF |
+| --- | --- | --- |
+| 生成方式 | `docx` 库代码构建（`server/src/docx.ts`） | PDFKit 直接绘制（`server/src/pdf.ts`） |
+| 接口 | `POST /api/resumes/:id/export/docx` | `POST /api/resumes/:id/export/pdf` |
+| 字体来源 | **打开方本机**：前端用 canvas 测宽探测本机装了候选清单（`FONT_CANDIDATES`）里的哪个字体，把名字传给后端，后端白名单校验后写进文档默认样式 | **服务端内嵌**：思源黑体（Noto Sans SC）静态字重完整嵌入 PDF，与打开方环境无关 |
+| 产出物体积 | 小（不嵌字体） | 小（PDFKit 按用字自动子集化，10MB 源字体 → 几十 KB） |
+| 用途 | 给用户自行编辑 | 最终交付物，字体与分页跨机器一致 |
+
+**为什么 docx 不嵌字体**：已完整排查过（fontTable、关系、Content_Types、name 表、`w:sig`、cmap、完整字体与子集字体对比），OOXML 结构逐项正确，但 Mac 版 Word 仍会对同一段落内的字符做不一致替换——这是 Word 自身的问题，不是我们的实现问题。docx 维持「探测本机字体」方案即可，**不要再尝试嵌入**。
+
+**为什么 PDF 不走 docx 中间产物**：曾用「导出 docx → 本机 Word/WPS 另存 PDF」，质量取决于用户环境，且被上一条卡死。改用 PDFKit 直接绘制后，字体嵌入由我们掌控。
+
+**共同约定**
+
+- 版式数值**只**读 `shared/style-constants.ts`，`docx.ts` 与 `pdf.ts` 两侧都禁止硬编码；改版式必须同时看这两个文件（排版逻辑有两份实现，是这套方案的已知代价，换来的是 PDF 不依赖用户环境）。
+- 前端只有一个 `ExportButton`（`client/src/components/export-button.tsx`），用 `format: 'docx' | 'pdf'` 决定接口路径与文案；两者都先 `flushDraft()` 再请求，避免导出旧内容。`fontFamily` 探测只在 docx 时执行。
 - **变量字体不能直接用**：思源黑体官方包是变量字体，PDFKit 不支持；且其默认实例是 Thin(100)，实例化后若不重建 name 表，family 名会带 Thin 后缀导致字体匹配失败。静态字重的一次性生成脚本见 `pdf-export-plan.md`。
-- **docx 导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
+- **导出必须内嵌照片**：原 Word 简历的证件照用的是外链（`file:///...`），收件人打开会看不到图，不要沿用这种写法。
+- **不做浏览器打印预览**：曾经的 `/preview` 路由已删除，不要恢复。浏览器渲染的字体、行距、分页无法与服务端输出对齐，维护两套只会互相打架。要看效果就打开导出的 docx / PDF。
+- 版式映射表与实施细节见 `pdf-export-plan.md`。
 
 ## 简历结构（模块顺序固定）
 

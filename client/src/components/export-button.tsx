@@ -3,16 +3,25 @@ import { Download } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { detectDocxFont } from '@/lib/fonts'
 
+/** 支持的导出格式，决定接口路径与兜底文件名。 */
+export type ExportFormat = 'docx' | 'pdf'
+
+const LABEL: Record<ExportFormat, string> = {
+  docx: '导出 Word',
+  pdf: '导出 PDF',
+}
+
 type Props = {
   resumeId: string
+  format: ExportFormat
   /** 先把未落库的草稿改动发出去，否则导出的可能是旧内容 */
   flushDraft: () => Promise<void>
   /** 由调用方控制按钮尺寸等外观（手机端触控区更大） */
   buttonClassName?: string
 }
 
-/** 请求导出 docx 并触发浏览器下载。带 loading 状态。 */
-export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Props) {
+/** 请求导出并触发浏览器下载。带 loading 状态。 */
+export function ExportButton({ resumeId, format, flushDraft, buttonClassName }: Props) {
   const [pending, setPending] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
@@ -23,10 +32,13 @@ export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Prop
     try {
       await flushDraft()
 
-      const res = await fetch(`/api/resumes/${resumeId}/export/docx`, {
+      const res = await fetch(`/api/resumes/${resumeId}/export/${format}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ fontFamily: detectDocxFont() }),
+        // docx 用什么字体由打开方本机决定，把探测结果带过去；
+        // PDF 的字体在服务端嵌入，不需要这个参数
+        body:
+          format === 'docx' ? JSON.stringify({ fontFamily: detectDocxFont() }) : undefined,
       })
 
       if (!res.ok) {
@@ -36,7 +48,9 @@ export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Prop
 
       const blob = await res.blob()
       const disposition = res.headers.get('Content-Disposition') ?? ''
-      const filename = decodeURIComponent(disposition.split("filename*=UTF-8''")[1]?.split(';')[0] ?? 'resume.docx')
+      const filename = decodeURIComponent(
+        disposition.split("filename*=UTF-8''")[1]?.split(';')[0] ?? `resume.${format}`
+      )
 
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
@@ -62,7 +76,7 @@ export function ExportDocxButton({ resumeId, flushDraft, buttonClassName }: Prop
         onClick={() => void handleExport()}
         disabled={pending}
       >
-        <Download /> {pending ? '导出中…' : '导出 Word'}
+        <Download /> {pending ? '导出中…' : LABEL[format]}
       </Button>
       {error && <p className="text-xs text-destructive">{error}</p>}
     </div>

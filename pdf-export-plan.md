@@ -171,7 +171,7 @@ build(700, 'Bold', 'NotoSansSC-Bold.ttf')
 **产出**
 
 - 编辑页在「导出 Word」旁新增「导出 PDF」，样式与现有按钮一致
-- 复用 `ExportDocxButton` 的逻辑（先 `flushDraft()` 再请求，避免导出旧内容），抽成共用组件或参数化
+- `ExportDocxButton` 参数化为 `ExportButton`（`client/src/components/export-button.tsx`），按 `format` 决定接口路径与文案；先 `flushDraft()` 再请求，避免导出旧内容
 - 带 loading 与错误提示
 
 **验证**

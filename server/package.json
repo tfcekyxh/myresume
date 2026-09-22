@@ -21,6 +21,7 @@
     "dotenv": "^18.0.0",
     "express": "^5.1.0",
     "express-session": "^1.19.0",
+    "pdfkit": "^0.20.2",
     "pg": "^8.23.0",
     "prisma": "7.10.0",
     "zod": "^4.6.5"
@@ -30,6 +31,7 @@
     "@types/connect-pg-simple": "^7.0.3",
     "@types/express": "^5.0.0",
     "@types/express-session": "^1.19.0",
+    "@types/pdfkit": "^0.17.6",
     "@types/pg": "^8.23.1",
     "typescript": "~6.0.2"
   }

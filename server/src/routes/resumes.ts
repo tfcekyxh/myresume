@@ -3,6 +3,7 @@ import { z } from 'zod'
 import { createEmptyResumeData, FONT, FONT_CANDIDATES, PHOTO, resumeDataSchema } from '@mymenu/shared'
 import { prisma } from '../db'
 import { buildResumeDocx } from '../docx'
+import { buildResumePdf } from '../pdf'
 import { requireAuth } from '../require-auth'
 import { findOwnResume, parseResumeData } from '../resume-utils'
 import { versionsRouter } from './versions'
@@ -245,6 +246,35 @@ resumesRouter.post('/:id/export/docx', async (req, res) => {
   res.setHeader(
     'Content-Disposition',
     `attachment; filename="resume.docx"; filename*=UTF-8''${encodeURIComponent(filename)}`
+  )
+  res.send(buffer)
+})
+
+/** 导出 PDF。思源黑体随文档完整嵌入，收件人无需安装字体。 */
+resumesRouter.post('/:id/export/pdf', async (req, res) => {
+  const resume = await findOwnResume(req.params.id, req.session.userId!)
+  if (!resume) {
+    res.status(404).json({ error: '简历不存在' })
+    return
+  }
+
+  const photo = resume.photoId
+    ? await prisma.photo.findUnique({
+        where: { id: resume.photoId },
+        select: { data: true },
+      })
+    : null
+
+  const data = parseResumeData(resume.data)
+  const buffer = await buildResumePdf(data, photo?.data ?? null)
+
+  const name = data.basic.name.trim() || resume.title
+  const filename = `${name}-简历-${new Date().toISOString().slice(0, 10)}.pdf`
+
+  res.setHeader('Content-Type', 'application/pdf')
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="resume.pdf"; filename*=UTF-8''${encodeURIComponent(filename)}`
   )
   res.send(buffer)
 })

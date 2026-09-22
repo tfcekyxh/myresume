@@ -16,9 +16,17 @@ export const TWIPS_PER_PT = 20
 /** 1 cm ≈ 566.93 twips。 */
 export const TWIPS_PER_CM = 1440 / 2.54
 
+/** 1 cm ≈ 28.35 pt（1 inch = 72 pt）。 */
+export const PT_PER_CM = 72 / 2.54
+
 /** cm → twips，docx 库要求整数。 */
 export function cmToTwips(cm: number): number {
   return Math.round(cm * TWIPS_PER_CM)
+}
+
+/** cm → pt，PDF 的坐标单位。 */
+export function cmToPt(cm: number): number {
+  return cm * PT_PER_CM
 }
 
 /** pt → twips。 */
@@ -130,7 +138,7 @@ export const TIME_TEXT = {
   color: COLOR.timeText,
 } as const
 
-/** 要点列表：十进制编号「1.」，带悬挂缩进。专业技能不用编号。 */
+/** 要点列表：十进制编号「1.」，带悬挂缩进。专业技能与各经历的要点共用。 */
 export const BULLET_LIST = {
   numbering: 'decimal',
   indentCm: INDENT.listCm,

@@ -32,7 +32,7 @@ export const educationItemSchema = z.object({
   period: z.string().max(50),
 })
 
-/** 专业技能。纯段落，无编号。 */
+/** 专业技能。单段文字，导出时与各经历的要点一样带数字编号。 */
 export const skillItemSchema = z.object({
   text: z.string().max(500),
 })

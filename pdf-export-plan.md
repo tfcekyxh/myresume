@@ -114,16 +114,16 @@ build(700, 'Bold', 'NotoSansSC-Bold.ttf')
 
 | 版式要素 | docx 实现 | PDFKit 实现 |
 | --- | --- | --- |
-| 纸张 / 页边距 | `page.size` / `page.margin`（twips） | `size: 'A4'`，`margins` 用 `cmToPt()` 换算 |
-| 正文行距 | `spacing.line`（240 × 1.1） | `lineGap`，或按 `fontSize × 1.1` 手动推进 y |
+| 纸张 / 页边距 | `page.size` / `page.margin`（twips） | `size` 与 `margins` 都用 `cmToPt()` 从常量表换算，不用 PDFKit 的 A4 预设 |
+| 正文行距 | `spacing.line`（240 × 1.1） | `lineGap` 补足到「字体自然行高 × 1.1」，与 Word 的多倍行距同义（不是 `fontSize × 1.1`） |
 | 章节标题 | 文字底纹（白字）+ 段落下边框 | `rect().fill()` 画黑底 + 白字；`moveTo/lineTo/stroke` 画 0.5pt 下边框 |
-| 条目标题行 | 制表位 `pos=2000/2800` + 右对齐时间 | 按 `ITEM_TITLE.columnStartsCm` 算绝对 x 定位；时间用 `align: 'right'` |
+| 条目标题行 | 制表位 `pos=2000/2800` + 右对齐时间 | 按 `ITEM_TITLE.columnStartsCm` 算绝对 x 定位；各栏字号不同，统一用 `baseline: 'alphabetic'` 对齐基线；时间按自身宽度从右边界倒推 x |
 | 时间文字颜色 | `color: COLOR.timeText` | `fillColor()` |
-| 要点编号 | `numbering` 十进制，每段独立实例 | 手动拼 `1.` 前缀（PDFKit 的 `list()` 无法按条目重置） |
-| 要点缩进 | `indent.left` + `hanging` | `doc.text(..., { indent, x })` |
+| 要点编号 | `numbering` 十进制，每段独立实例 | 编号单独画在左边，正文整块从缩进位置起排（PDFKit 没有悬挂缩进） |
+| 要点缩进 | `indent.left` + `hanging` | 编号在 `INDENT.listCm - INDENT.listHangingCm` 处，正文左边界在 `INDENT.listCm` |
 | 证件照 | `ImageRun` base64 内嵌 | `doc.image(buffer, x, y, { width, height })` |
-| 页脚 | `footerDistance` | 定位到距底边 `PAGE.footerDistanceCm` |
-| 分页 | 由 Word 自动分页 | PDFKit 对流动文本自动分页 |
+| 页脚 | 正文流末尾的一段 9pt 文字（`footerDistance` 只作用于 Word 页脚区，本文档没用到） | 同左，按正文流排在最后 |
+| 分页 | 由 Word 自动分页 | PDFKit 对流动文本自动分页；章节标题前做保护性换行，避免标题孤行落在页底 |
 
 <br />
 

@@ -110,7 +110,7 @@ export function SkillsForm() {
 
   return (
     <ModuleCard title="专业技能">
-      <EmptyHint>每条为一段说明，导出时不带编号</EmptyHint>
+      <EmptyHint>每条为一段说明，导出时按顺序编号</EmptyHint>
 
       {fields.length > 0 && (
         <SortableList ids={fields.map((f) => f.id)} onReorder={move}>

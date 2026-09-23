@@ -5,6 +5,7 @@ import { resumeDataSchema, type ResumeData } from '@mymenu/shared'
 import { useResume } from '@/components/resume-gate'
 import { Button } from '@/components/ui/button'
 import { ExportButton } from '@/components/export-button'
+import { ImportResumeButton } from '@/components/import-resume-button'
 import { SaveVersionButton } from '@/components/save-version-button'
 import { useDraftAutosave, type SaveStatus } from '@/hooks/use-draft-autosave'
 import {
@@ -178,6 +179,10 @@ export function ResumeForm() {
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
           <SaveStatusBar status={saveStatus} />
           <div className="flex flex-wrap items-center gap-2 sm:items-start">
+            <ImportResumeButton
+              onImport={(data) => form.reset(data)}
+              buttonClassName="h-10 sm:h-8"
+            />
             <SaveVersionButton
               resumeId={resumeId}
               flushDraft={flushDraft}

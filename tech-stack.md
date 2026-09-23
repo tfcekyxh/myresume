@@ -23,6 +23,7 @@
 | 密码哈希 | `Bun.password`（内置 argon2id） |
 | docx 导出 | `docx` 库，代码构建 |
 | PDF 导出 | `pdfkit`，服务端直接绘制并完整嵌入字体（见 [pdf-export-plan.md](./pdf-export-plan.md)） |
+| 简历导入 | 文件文字浏览器本地提取（`mammoth` 解析 docx、`pdfjs-dist` 解析 PDF）；结构化用大模型（OpenAI 兼容接口，默认智谱 GLM-4-Flash） |
 | 证件照 | base64 存 `photos` 表，简历与快照只存 `photo_id` 引用，不做文件服务 |
 | 工程结构 | Bun workspaces：`client/` + `server/` + `shared/` |
 
@@ -34,7 +35,7 @@
 client: react react-dom react-router-dom tailwindcss
         react-hook-form zod @hookform/resolvers
         @tanstack/react-query @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
-        lucide-react
+        lucide-react mammoth pdfjs-dist
         （另有 shadcn add 生成的 radix 组件）
 
 server: express zod express-session connect-pg-simple docx pdfkit
@@ -95,9 +96,11 @@ POST   /api/resumes/:id/versions/:versionId/restore
 
 POST   /api/resumes/:id/export/docx
 POST   /api/resumes/:id/export/pdf
+
+POST   /api/import/parse              # 简历文本 → ResumeData（大模型解析）
 ```
 
-路径一律带 resume id，多份简历各自独立。
+路径一律带 resume id，多份简历各自独立；`/api/import/*` 是无状态解析接口，不落库、不绑定简历（覆盖表单与草稿自动保存在前端完成）。
 
 <br />
 
@@ -172,6 +175,14 @@ POST   /api/resumes/:id/export/pdf
 - 上传时前端必须先用 canvas 压缩，不存原图：按目标宽高比**居中裁剪（cover）**再缩放（不要直接拉伸，任意比例的输入会变形），转 JPEG base64，控制在 100 KB 以内。目标像素由显示尺寸与 300 DPI 推导（1.98 × 2.2 cm → 234 × 260），**不要用标准一寸照的 295×413**，那个比例 0.714 与 1.98:2.2 = 0.9 不符，插入后会横向拉伸。
 - 上传接口需比对内容（如比对 base64 哈希）与当前照片是否相同，相同则复用现有 `photo_id`，避免反复上传同一张图导致 `photos` 堆积。
 - docx 生成时，照片按 `photo_id` 单独读取后并入输出。
+
+### 简历导入
+
+- 文件文字提取全部在浏览器本地完成，文件内容不经过我们的服务器：`.docx` 用 `mammoth.extractRawText`（走包的 browser 入口），`.pdf` 用 `pdfjs-dist` 逐页取 TextContent（worker 用 `pdfjs-dist/build/pdf.worker.min.mjs?url` 交给 Vite 打包），`.txt` / `.md` 直接 `File.text()`。图片型 / 扫描版 PDF 没有文本层，明确提示不支持，不做 OCR。
+- 结构化解析在服务端：`POST /api/import/parse` 收 `{ text }`，调 OpenAI 兼容的 Chat Completions 接口（`response_format: json_object`），用 system prompt 约束输出 `ResumeData` JSON；返回前过一遍 `resumeDataSchema`，并做宽容归一化（缺字段补空串 / 空数组、超长截断、非字符串转字符串），模型偶发瑕疵不阻断导入。
+- 模型配置走环境变量 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`，默认智谱 `glm-4-flash`；**Key 只放服务端**。未配置 Key 时该接口返回 503，其余功能不受影响。
+- 解析接口无状态、不绑简历、不写库；前端拿到结果先在对话框展示摘要，用户二次确认后 `form.reset(data)` 整体覆盖，后续由现有 debounce 草稿保存落库。照片不属于 `ResumeData`，导入不改照片。
+- e2e 不打真实模型（慢、费、不稳定）：用 Playwright `page.route` mock `/api/import/parse`，只验证用户可见的交互链路。
 
 <br />
 
@@ -254,6 +265,7 @@ CLI 与 client 版本不一致会出问题。当前锁定 `prisma@7.10.0` 与 `@
 - Bun 运行时从 cwd（`server/`）自动加载 `.env`
 - Prisma CLI 由 `prisma.config.ts` 中的 dotenv 显式加载
 - `.env` 已被 `.gitignore` 覆盖，`.env.example` 提交进仓库
+- `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`：简历导入解析用的大模型（OpenAI 兼容接口），默认智谱 GLM-4-Flash；`LLM_API_KEY` 留空时导入功能返回 503
 
 <br />
 

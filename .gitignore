@@ -7,3 +7,4 @@ server/src/generated/
 .DS_Store
 test-results/
 playwright-report/
+.trae/

@@ -419,10 +419,43 @@
 
 <br />
 
+## 阶段 H：简历导入
+
+### Step 21　导入简历并自动填充表单
+
+**目标**：在编辑页导入一份已有简历（粘贴文本或 `.txt` / `.md` / `.docx` / `.pdf` 文件），经大模型解析成 `ResumeData`，用户确认后整体覆盖当前表单。
+
+**产出（前端先行，后端补齐）**
+
+- 前端
+  - 编辑页工具栏新增「导入简历」按钮与对话框（`client/src/components/import-resume-button.tsx`）
+  - `lib/import-file.ts`：`.txt` / `.md` 直接读文本；`.docx` 用 mammoth `extractRawText`（browser 入口）；`.pdf` 用 pdfjs-dist 逐页取文本（worker 走 `?url`）；10MB 上限、不支持格式给明确错误；扫描版 PDF 提示无文本
+  - 提取文本可在对话框里编辑；「开始解析」调 `POST /api/import/parse`
+  - 解析成功展示摘要预览（姓名、意向、各模块条目数），二次确认后 `form.reset(data)` 整体覆盖；走现有 debounce 自动保存；照片不变
+  - 失败（503 / 502 / 网络错误）显示后端错误文案，保留文本可重试
+- 后端
+  - `server/src/resume-import.ts`：OpenAI 兼容 Chat Completions 调用（默认智谱 `https://open.bigmodel.cn/api/paas/v4`，模型 `glm-4-flash`，`response_format: json_object`，180s 超时），system prompt 约束输出 `ResumeData`
+  - 宽容归一化后过 `resumeDataSchema`：缺字段补空值、超长截断、points 去空
+  - `POST /api/import/parse`（鉴权）：入参 `{ text }`（20~50000 字）；未配 `LLM_API_KEY` 返回 503；上游失败 / 内容不合法返回 502
+  - 环境变量 `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`（见 `.env.example`），不设为启动必需
+- e2e：`page.route` mock 解析接口，覆盖「粘贴 → 解析 → 确认覆盖 → 表单填充」与「取消不覆盖」；不打真实模型
+
+**验证**
+
+- 粘贴一段真实简历文本，解析后各模块条目正确填充，草稿 1 秒后自动落库，刷新仍在
+- 上传 docx / pdf / txt 各一份，提取文本正确；扫描版 PDF 给出友好提示
+- 未配置 Key 时接口 503，页面提示导入暂不可用，其他功能正常
+- 取消 / 关闭对话框不改动表单
+
+<br />
+
 ## 风险点
 
 | 风险 | 影响步骤 | 应对 |
 | --- | --- | --- |
+| 大模型解析不稳定 / 服务商限流（GLM-4-Flash 免费档有 QPS 限制） | Step 21 | 解析结果必须过 `resumeDataSchema` + 宽容归一化；失败给可读错误，允许修改文本重试；导入后明确提示人工核对 |
+| 简历文本属敏感数据，发送给第三方模型 | Step 21 | 只用其做一次性解析、不落库；在入口处说明；接口与 Key 全在服务端 |
+| 图片型 PDF 提取不到文字 | Step 21 | 明确提示「扫描件不支持」，不做 OCR；可改粘贴文本 |
 | Prisma 在 Bun 下的 postinstall 被跳过 | Step 2 | 配 `trustedDependencies`，并把 `bunx prisma generate` 写进 `postinstall` |
 | 前端先行导致接口契约漂移 | Step 4~13 | 契约以 `shared/` 的 zod schema 为准，两侧共用同一份定义 |
 | 照片被误删导致历史版本丢图 | Step 11、13 | `photos` 只增不删，不做孤儿清理 |

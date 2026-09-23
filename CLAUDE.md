@@ -68,6 +68,7 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **草稿保存**：debounce 1s 整体 `PATCH /api/resumes/:id/draft`；`visibilitychange`（hidden）与 `pagehide` 时用 `fetch(..., { keepalive: true })` 立即补发一次（sendBeacon 只能发 POST，与 PATCH 接口不符）。
 - **草稿与版本**：草稿（`resumes.data`）是唯一的工作区，编辑时自动保存覆盖它；版本（`resume_versions.snapshot`）是**只读快照**，只在点「存档」时产生，产生后永不改变。恢复 = 用快照覆盖草稿。版本列表顶部固定显示一条「当前草稿（未存档）」，内容随编辑实时更新，只可查看、不可恢复。照片跟随版本（`resume_versions.photo_id`）。
 - **照片**：base64 存独立 `photos` 表，简历与快照只存 `photo_id` 引用；`photos` 只增不删。前端必须压缩后再传。
+- **导入简历**：编辑页「导入简历」支持粘贴文本与 `.txt/.md/.docx/.pdf` 文件。文件文字提取只在浏览器本地（`mammoth` / `pdfjs-dist`，扫描版 PDF 不支持、不做 OCR）；结构化解析在服务端 `POST /api/import/parse`，调 OpenAI 兼容大模型（默认智谱 GLM-4-Flash，配置 `LLM_BASE_URL/LLM_API_KEY/LLM_MODEL`，Key 不设为启动必需，未配置时 503），结果宽容归一化后过 `resumeDataSchema`。前端预览摘要 → 二次确认 → `form.reset()` **整体覆盖**，草稿自动保存照常落库；不导入照片。e2e 用 `page.route` mock 解析接口，不打真实模型。
 - **简历结构**：只定义一份 zod schema 于 `shared/`，前端表单、后端校验、docx 生成三处复用。
 - **编辑页表单**：单层 `useForm<ResumeData>` + `zodResolver(resumeDataSchema)`，用 `FormProvider` 下发，各模块组件通过 `useFormContext` 读写。可多条目模块用 `useFieldArray` + dnd-kit，拖拽结束调 `move()` 而非直接改数组。
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。

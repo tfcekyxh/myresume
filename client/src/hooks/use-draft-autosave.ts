@@ -18,6 +18,13 @@ const DEBOUNCE_MS = 1000
  */
 export function useDraftAutosave(resumeId: string, form: UseFormReturn<ResumeData>) {
   const saveDraft = useSaveDraft()
+  // useMutation 每次渲染都返回新的结果对象，直接作为依赖会让 flush 跟着重建，
+  // watch effect 随之反复退订 / 重订，cleanup 里的 clearTimeout 会误杀防抖定时器
+  // （form.reset 触发的重渲染与定时器安排在同一轮提交里，导入简历确认后草稿会因此不落库）。
+  // 用 ref 持有 mutation，保证 flush 身份在 resumeId 不变期间稳定。
+  const saveDraftRef = useRef(saveDraft)
+  saveDraftRef.current = saveDraft
+
   const [status, setStatus] = useState<SaveStatus>('idle')
 
   const timer = useRef<number | undefined>(undefined)
@@ -31,14 +38,14 @@ export function useDraftAutosave(resumeId: string, form: UseFormReturn<ResumeDat
     setStatus('saving')
 
     try {
-      await saveDraft.mutateAsync({ id: resumeId, data })
+      await saveDraftRef.current.mutateAsync({ id: resumeId, data })
       setStatus('saved')
     } catch {
       setStatus('error')
       // 保存期间若又有新改动，以新内容为准，别用旧的覆盖回去
       if (!pending.current) pending.current = data
     }
-  }, [resumeId, saveDraft])
+  }, [resumeId])
 
   // 表单变化 → debounce 保存
   useEffect(() => {

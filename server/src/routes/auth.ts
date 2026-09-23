@@ -11,6 +11,49 @@ const loginSchema = z.object({
   password: z.string().min(1).max(200),
 })
 
+const registerSchema = z.object({
+  username: z.string().min(3, '用户名至少 3 个字符').max(50),
+  password: z.string().min(6, '密码至少 6 个字符').max(200),
+})
+
+authRouter.post('/register', async (req, res) => {
+  const parsed = registerSchema.safeParse(req.body)
+  if (!parsed.success) {
+    res.status(400).json({ error: '请输入 3 位以上用户名和 6 位以上密码' })
+    return
+  }
+
+  const { username, password } = parsed.data
+
+  const existing = await prisma.user.findUnique({ where: { username } })
+  if (existing) {
+    res.status(409).json({ error: '用户名已被占用' })
+    return
+  }
+
+  const passwordHash = await Bun.password.hash(password)
+
+  let user
+  try {
+    user = await prisma.user.create({ data: { username, passwordHash } })
+  } catch (err) {
+    // 并发注册撞唯一索引时兜底
+    if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002') {
+      res.status(409).json({ error: '用户名已被占用' })
+      return
+    }
+    throw err
+  }
+
+  // 注册成功即登录：重建会话后写入用户 id，与登录接口一致
+  await new Promise<void>((resolve, reject) => {
+    req.session.regenerate((err) => (err ? reject(err) : resolve()))
+  })
+  req.session.userId = user.id
+
+  res.json({ id: user.id, username: user.username })
+})
+
 authRouter.post('/login', async (req, res) => {
   const parsed = loginSchema.safeParse(req.body)
   if (!parsed.success) {

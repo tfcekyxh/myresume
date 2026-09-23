@@ -108,7 +108,7 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 
 ### 鉴权
 
-- 账号由 seed 脚本预置，无注册流程。
+- 账号来源：seed 脚本预置 + 页面自助注册。注册接口 `POST /api/auth/register`：用户名 ≥3 位、密码 ≥6 位，用户名唯一（重复返回 409），密码用 `Bun.password`（argon2id）哈希，注册成功即建立会话（自动登录）。注册表单含「确认密码」输入框，仅前端校验两次输入一致，提交时不传后端。
 - `express-session` + `connect-pg-simple`，`createTableIfMissing: true`。
 - `rolling: true` 实现滑动续期，有效期 30 天；过期清理由库内置，无需定时任务。
 - Cookie：`httpOnly`、`sameSite: 'lax'`、生产环境 `secure`。

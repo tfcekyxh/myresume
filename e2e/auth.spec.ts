@@ -13,7 +13,7 @@ test('未登录访问受保护页面会被重定向到登录页', async ({ page 
     await page.goto(path)
 
     await expect(page).toHaveURL('/login')
-    await expect(page.getByText('用预置账号登录后编辑简历')).toBeVisible()
+    await expect(page.getByText('登录后编辑简历')).toBeVisible()
   }
 })
 

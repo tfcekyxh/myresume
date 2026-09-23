@@ -67,6 +67,18 @@ export async function clearResumesForUser(username: string) {
 }
 
 /**
+ * 按用户名批量删除用户。
+ *
+ * 简历对用户是 onDelete: Cascade（照片、版本再随简历级联），
+ * 所以删用户即可把该用户的全部数据清干净。
+ * 供注册类用例清理临时注册的账号——只允许传本次测试创建的用户名。
+ */
+export async function deleteUsersByUsername(usernames: string[]) {
+  if (usernames.length === 0) return
+  await getPrisma().user.deleteMany({ where: { username: { in: usernames } } })
+}
+
+/**
  * 确保专用测试账号存在。
  *
  * 测试必须跑在自己的账号上：用例会清空该账号的简历，

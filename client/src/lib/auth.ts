@@ -36,6 +36,20 @@ export function useLogin() {
   })
 }
 
+export function useRegister() {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: (input: { username: string; password: string }) =>
+      api<CurrentUser>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify(input),
+      }),
+    onSuccess: (user) => {
+      queryClient.setQueryData(currentUserKey, user)
+    },
+  })
+}
+
 export function useLogout() {
   const queryClient = useQueryClient()
   return useMutation({

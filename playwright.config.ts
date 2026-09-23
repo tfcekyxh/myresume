@@ -10,10 +10,21 @@ export default defineConfig({
   workers: 1,
   reporter: 'list',
 
+  // 单个用例总超时。默认 30s 对 AI 解析类步骤偏紧，放宽到 3 分钟；
+  // 常规用例不受影响，断言等待单独由 expect.timeout 控制。
+  timeout: 180_000,
+
+  expect: {
+    // 自动等待类断言（toBeVisible 等）的超时，默认 5s，放宽到 15s
+    timeout: 15_000,
+  },
+
   use: {
     baseURL: BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
+    // click / fill 等动作的自动等待超时，默认 0（跟随用例总超时）
+    actionTimeout: 15_000,
   },
 
   projects: [

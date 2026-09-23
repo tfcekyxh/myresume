@@ -4,6 +4,7 @@ import { createEmptyResumeData, FONT, FONT_CANDIDATES, PHOTO, resumeDataSchema }
 import { prisma } from '../db'
 import { buildResumeDocx } from '../docx'
 import { buildResumePdf } from '../pdf'
+import { rateLimit } from '../rate-limit'
 import { requireAuth } from '../require-auth'
 import { findOwnResume, parseResumeData } from '../resume-utils'
 import { versionsRouter } from './versions'
@@ -12,6 +13,17 @@ export const resumesRouter = Router()
 
 // 本路由下所有接口都要求登录
 resumesRouter.use(requireAuth)
+
+/**
+ * 导出是 CPU 密集型操作（PDF 要子集化内嵌整套中文字体，docx 要压图片进文档）。
+ * docx 与 pdf 共用一份配额：正常用户不会在一分钟内导出十次。
+ */
+const exportLimiter = rateLimit('export', {
+  windowMs: 60_000,
+  max: 5,
+  scope: 'user',
+  message: '导出过于频繁，请稍后再试',
+})
 
 /** 草稿内容。包一层是为了将来能加 title 之类的字段。 */
 const draftSchema = z.object({ data: resumeDataSchema })
@@ -214,7 +226,7 @@ resumesRouter.post('/:id/photo', async (req, res) => {
 })
 
 /** 导出 docx。照片以 base64 内嵌进文档，不依赖任何外部链接。 */
-resumesRouter.post('/:id/export/docx', async (req, res) => {
+resumesRouter.post('/:id/export/docx', exportLimiter, async (req, res) => {
   const resume = await findOwnResume(req.params.id, req.session.userId!)
   if (!resume) {
     res.status(404).json({ error: '简历不存在' })
@@ -251,7 +263,7 @@ resumesRouter.post('/:id/export/docx', async (req, res) => {
 })
 
 /** 导出 PDF。思源黑体随文档完整嵌入，收件人无需安装字体。 */
-resumesRouter.post('/:id/export/pdf', async (req, res) => {
+resumesRouter.post('/:id/export/pdf', exportLimiter, async (req, res) => {
   const resume = await findOwnResume(req.params.id, req.session.userId!)
   if (!resume) {
     res.status(404).json({ error: '简历不存在' })

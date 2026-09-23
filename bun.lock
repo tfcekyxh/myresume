@@ -62,6 +62,7 @@
         "dotenv": "^18.0.0",
         "express": "^5.1.0",
         "express-session": "^1.19.0",
+        "helmet": "^8.3.0",
         "pdfkit": "^0.20.2",
         "pg": "^8.23.0",
         "prisma": "7.10.0",
@@ -740,6 +741,8 @@
     "hash.js": ["hash.js@1.1.7", "https://registry.npmmirror.com/hash.js/-/hash.js-1.1.7.tgz", { "dependencies": { "inherits": "^2.0.3", "minimalistic-assert": "^1.0.1" } }, "sha512-taOaskGt4z4SOANNseOviYDvjEJinIkRgmp7LbKP2YTTmVxWBl87s/uzK9r+44BclBSp2X7K1hqeNfz9JbBeXA=="],
 
     "hasown": ["hasown@2.0.4", "https://registry.npmmirror.com/hasown/-/hasown-2.0.4.tgz", { "dependencies": { "function-bind": "^1.1.2" } }, "sha512-T2UbfbBEF32wiepXIsMlTW9+dDYC6wMh/t/vYA4tuOMKqWz/n3vr1NFSxQiyP+zk2mXsoMA/i/7qV6LKut1t1A=="],
+
+    "helmet": ["helmet@8.3.0", "https://registry.npmmirror.com/helmet/-/helmet-8.3.0.tgz", {}, "sha512-Qgpiaws3Sm30Av8Eah6sjMCZZwjlBu+E68rhpCWBshY1lb09HtLwj5GviX0OyQIn+ulUS0iX0AxN5n3tLZzz1w=="],
 
     "hono": ["hono@4.13.8", "https://registry.npmmirror.com/hono/-/hono-4.13.8.tgz", {}, "sha512-/Gng7NfoykZl2pjukW5Z6+8Yxm3BPRf86GTbQnt0SbySkvax4fyL4H3HhY1cCpBGmiW9XDRFzRV+CXK2W8QudQ=="],
 

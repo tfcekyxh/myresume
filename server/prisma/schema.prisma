@@ -62,3 +62,15 @@ model ResumeVersion {
 
   @@index([resumeId])
 }
+
+/// 限流计数。key 形如 `login:ip:1.2.3.4`，windowStart 是窗口起点对齐后的时间。
+/// 复合主键让「加一」能用一条 UPSERT 完成，多实例共享同一份计数。
+model RateLimit {
+  key         String
+  windowStart DateTime
+  count       Int      @default(0)
+
+  @@id([key, windowStart])
+  /// 过期行清理按时间扫描
+  @@index([windowStart])
+}

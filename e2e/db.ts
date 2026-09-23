@@ -79,6 +79,17 @@ export async function deleteUsersByUsername(usernames: string[]) {
 }
 
 /**
+ * 清空限流计数。
+ *
+ * 用例本身就要反复登录、注册，不清的话测试自己就会撞上生产阈值
+ * （登录 15 分钟 10 次、注册 1 小时 2 次），跑到一半全变成 429。
+ * 只影响限流表，与业务数据无关。
+ */
+export async function clearRateLimits() {
+  await getPrisma().rateLimit.deleteMany()
+}
+
+/**
  * 确保专用测试账号存在。
  *
  * 测试必须跑在自己的账号上：用例会清空该账号的简历，

@@ -13,7 +13,9 @@ export default defineConfig({
   server: {
     port: 5173,
     proxy: {
-      '/api': { target: 'http://localhost:3000', changeOrigin: true },
+      // xfwd 让代理带上 X-Forwarded-Host（5173），否则 changeOrigin 改写后的 Host
+      // 是 3000，与浏览器的 Origin 对不上，会被后端的 CSRF 同源校验拒掉。
+      '/api': { target: 'http://localhost:3000', changeOrigin: true, xfwd: true },
     },
   },
 })

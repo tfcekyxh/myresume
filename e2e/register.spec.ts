@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test'
 import { randomBytes } from 'node:crypto'
-import { deleteUsersByUsername, disconnectDb, ensureTestUser } from './db'
+import { clearRateLimits, deleteUsersByUsername, disconnectDb, ensureTestUser } from './db'
 
 // 注册用例专用随机用户名，与 e2e-tester 账号完全隔离
 const uniqueUsername = () => `e2e-register-${randomBytes(4).toString('hex')}`
@@ -8,6 +8,11 @@ const PASSWORD = 'register-pw-123'
 
 // 本次运行创建的账号，afterAll 统一删除（简历随用户级联删除）
 const createdUsernames: string[] = []
+
+// 注册限流是每 IP 每小时 2 次，用例本身就要走几次注册，必须从零开始
+test.beforeEach(async () => {
+  await clearRateLimits()
+})
 
 test.afterAll(async () => {
   await deleteUsersByUsername(createdUsernames)

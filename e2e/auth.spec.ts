@@ -8,6 +8,12 @@ import {
   createResume,
 } from './helpers'
 
+// 有「用错密码登录」的用例，登录限流是 15 分钟 10 次，从零开始才稳
+test.beforeEach(async () => {
+  const { clearRateLimits } = await import('./db')
+  await clearRateLimits()
+})
+
 test('未登录访问受保护页面会被重定向到登录页', async ({ page }) => {
   for (const path of ['/resumes', '/resumes/abc/edit', '/resumes/abc/versions', '/']) {
     await page.goto(path)

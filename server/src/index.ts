@@ -1,8 +1,11 @@
 import path from 'node:path'
 import express from 'express'
-import type { NextFunction, Request, Response } from 'express'
+import type { NextFunction, Request, RequestHandler, Response } from 'express'
+import helmet from 'helmet'
 import { RESUME_MODULE_ORDER } from '@mymenu/shared'
+import { verifySameOrigin } from './csrf'
 import { IS_PRODUCTION, PORT } from './env'
+import { rateLimit } from './rate-limit'
 import { authRouter } from './routes/auth'
 import { importRouter } from './routes/import'
 import { resumesRouter } from './routes/resumes'
@@ -14,8 +17,49 @@ const app = express()
 // secure cookie 就不会下发，表现为登录成功却立刻掉线。
 if (IS_PRODUCTION) app.set('trust proxy', 1)
 
+// helmet 的类型签名基于 node 原生 IncomingMessage/ServerResponse，与 Express 5 的
+// RequestHandler 对不上（运行时完全兼容），这里断言一次，避免每个调用点都报错。
+const securityHeaders = helmet({
+  // 前端由本进程托管（生产），这些指令同时作用于页面与接口响应。
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc: ["'self'"],
+      // 证件照是 base64 data URL，直接用在 <img src> 上
+      imgSrc: ["'self'", 'data:', 'blob:'],
+      // 样式都是打包产物，但 dnd-kit 之类会在元素上写内联 style 属性
+      styleSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
+      connectSrc: ["'self'"],
+      objectSrc: ["'none'"],
+      frameAncestors: ["'none'"],
+      baseUri: ["'self'"],
+      formAction: ["'self'"],
+    },
+  },
+  // 本地开发走 http，HSTS 头只会被浏览器忽略，索性只在生产下发
+  hsts: IS_PRODUCTION,
+  // 同源请求才带 Referer，跨站一律不带——CSRF 校验的兜底信息来源
+  referrerPolicy: { policy: 'same-origin' },
+}) as unknown as RequestHandler
+
+app.use(securityHeaders)
+
+// 全局兜底限流：阈值定得宽松，正常使用踩不到，只拦明显异常的流量。
+// 精确防护交给各接口自己的限流器。
+app.use(
+  '/api',
+  rateLimit('global', {
+    windowMs: 60_000,
+    max: 600,
+    scope: 'ip',
+    message: '请求过于频繁，请稍后再试',
+  }),
+)
+
 // 照片以 base64 随请求体提交，默认 100kb 不够用
 app.use(express.json({ limit: '2mb' }))
+// 写操作先过同源校验，再看会话
+app.use(verifySameOrigin)
 app.use(sessionMiddleware)
 
 app.get('/api/health', (_req, res) => {

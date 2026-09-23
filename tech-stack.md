@@ -61,6 +61,7 @@ session         sid, sess, expire          -- connect-pg-simple 自动创建，�
 resumes         id, user_id, title, data jsonb, photo_id, updated_at
 photos          id, resume_id, data text, created_at   -- base64，只增不改
 resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
+rate_limits     key, window_start, count   -- 限流计数，key 形如 login:ip:1.2.3.4
 ```
 
 关系为 `user 1:N resume 1:N resume_version`，`resume 1:N photo`（照片池）。
@@ -74,6 +75,7 @@ resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
 ## 接口一览
 
 ```
+POST   /api/auth/register
 POST   /api/auth/login
 POST   /api/auth/logout
 GET    /api/auth/me
@@ -113,6 +115,41 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 - `rolling: true` 实现滑动续期，有效期 30 天；过期清理由库内置，无需定时任务。
 - Cookie：`httpOnly`、`sameSite: 'lax'`、生产环境 `secure`。
 - 登录写 `req.session.userId`，登出 `req.session.destroy()`，鉴权用 `requireAuth` 中间件读 `req.session.userId`。
+
+### 安全设计
+
+三块实现，全部在 `server/src/`。
+
+**限流**（`rate-limit.ts`）
+
+- 计数落在 `rate_limits` 表，加一由一条 `INSERT ... ON CONFLICT DO UPDATE SET count = count + 1 RETURNING count` 完成。用数据库而非进程内 Map，是为了多实例部署时各实例共享同一份计数——进程内 Map 在 N 个实例下等于阈值被放大 N 倍。
+- 固定窗口，窗口起点按 `windowMs` 对齐。超限返回 429 + `Retry-After`，body 与其他接口一致用 `{ error }`，前端直接展示，无需改渲染逻辑。
+- 数据库计数失败时放行并打日志，不让限流本身拖垮业务。
+- 过期行（24 小时未被碰过）由请求按 1% 概率顺带清理，不引入定时任务。
+- 阈值：
+
+| 接口 | 维度 | 窗口 | 次数 |
+| --- | --- | --- | --- |
+| 全部 `/api/*`（兜底） | IP | 1 分钟 | 600 |
+| `POST /api/auth/login` | IP | 15 分钟 | 10 |
+| `POST /api/auth/register` | IP | 1 小时 | 2 |
+| `POST /api/import/parse` | 用户 | 1 分钟 | 2 |
+| 导出 docx / pdf（共用配额） | 用户 | 1 分钟 | 5 |
+
+- 维度选择的理由：登录 / 注册时还没有身份，只能按 IP；导入与导出按用户 ID，既不会因多人共用一个出口 IP 互相牵连，也能精确拦住「一个人刷爆大模型额度」。
+- `rateLimit()` 返回类型的 params 泛型必须是 `any`：写成具体的宽类型会让 Express 5 反过来用它推断路由参数，把 `/:id/export/docx` 的 `req.params.id` 撑成 `string | string[]`。
+
+**安全响应头**（`index.ts` 的 helmet）
+
+- CSP `default-src 'self'`；`img-src` 额外放行 `data:`（证件照是 base64）；`style-src` 带 `'unsafe-inline'`（dnd-kit 会往元素上写内联 style 属性）。
+- `hsts` 只在生产下发；`referrer-policy` 用 `same-origin`（跨站不带 Referer，同源才带）。
+- helmet 的类型基于 node 原生 `IncomingMessage`，与 Express 5 的 `RequestHandler` 对不上，接入处断言一次即可，运行时完全兼容。
+
+**CSRF 兜底**（`csrf.ts`）
+
+- 主防线仍是 `SameSite=Lax`——跨站写请求带不上 cookie。这里再按 `Origin`（缺失时退回 `Referer`）校验一次，覆盖「误把 sameSite 放宽」与「同站不同源（子域）」两种情况。
+- 没有 `Origin` / `Referer` 的请求放行：非浏览器客户端不受 CSRF 影响，而浏览器发跨站写请求一定会带 `Origin`。
+- Host 比对同时认 `Host` 与 `X-Forwarded-Host`。开发期前端在 5173、经 Vite 代理转发到 3000，代理必须开 `xfwd`（见 `client/vite.config.ts`）透传原始主机，否则会被误杀。
 
 ### 草稿保存
 

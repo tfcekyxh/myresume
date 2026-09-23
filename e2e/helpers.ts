@@ -8,6 +8,10 @@ export const PASSWORD = process.env.E2E_PASSWORD ?? 'e2e-tester'
 
 /** 用预置账号登录，等待落到简历列表页（登录后先进 /resumes 选简历）。 */
 export async function loginAsDefaultUser(page: Page) {
+  // 每个用例都会登录，不清限流计数的话，跑到后面就会被自己的登录限流挡住
+  const { clearRateLimits } = await import('./db')
+  await clearRateLimits()
+
   await page.goto('/login')
   await page.getByLabel('用户名').fill(USERNAME)
   await page.getByLabel('密码').fill(PASSWORD)

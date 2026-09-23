@@ -1,10 +1,30 @@
 import { Router } from 'express'
 import { z } from 'zod'
 import { prisma } from '../db'
+import { rateLimit } from '../rate-limit'
 import { requireAuth } from '../require-auth'
 import { SESSION_COOKIE_NAME } from '../session'
 
 export const authRouter = Router()
+
+/**
+ * 登录爆破防护。此时还没有身份，只能按 IP 限。
+ * 与正常用户的登录频率相比余量很大，撞库却要付出 15 分钟 10 次的代价。
+ */
+const loginLimiter = rateLimit('login', {
+  windowMs: 15 * 60_000,
+  max: 10,
+  scope: 'ip',
+  message: '登录尝试过于频繁，请稍后再试',
+})
+
+/** 注册是开放入口，且注册完就能用大模型解析，按 IP 收得很紧。 */
+const registerLimiter = rateLimit('register', {
+  windowMs: 60 * 60_000,
+  max: 2,
+  scope: 'ip',
+  message: '注册过于频繁，请稍后再试',
+})
 
 const loginSchema = z.object({
   username: z.string().min(1).max(50),
@@ -16,7 +36,7 @@ const registerSchema = z.object({
   password: z.string().min(6, '密码至少 6 个字符').max(200),
 })
 
-authRouter.post('/register', async (req, res) => {
+authRouter.post('/register', registerLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: '请输入 3 位以上用户名和 6 位以上密码' })
@@ -54,7 +74,7 @@ authRouter.post('/register', async (req, res) => {
   res.json({ id: user.id, username: user.username })
 })
 
-authRouter.post('/login', async (req, res) => {
+authRouter.post('/login', loginLimiter, async (req, res) => {
   const parsed = loginSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: '请填写用户名和密码' })

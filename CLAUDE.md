@@ -74,6 +74,9 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx、PDF 共同读取，禁止任何一处硬编码。
 - **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
+- **限流**：计数落 `rate_limits` 表（`server/src/rate-limit.ts`），用数据库而非进程内 Map，是为了多实例部署时共享同一份计数。登录按 IP（15 分钟 10 次）、注册按 IP（1 小时 2 次）、导入按用户（1 分钟 2 次）、导出按用户（1 分钟 5 次），另有 `/api/*` 按 IP 每分钟 600 次的宽松兜底。
+- **安全响应头与 CSRF**：helmet 挂在 `server/src/index.ts`；CSRF 在主防线 `SameSite=Lax` 之外再加一层同源 `Origin` 校验（`server/src/csrf.ts`）。开发期 Vite 代理必须开 `xfwd`，否则改写后的 Host 与浏览器 Origin 对不上会被误杀。
+- **e2e 与限流**：限流用的是生产级严格阈值，用例开始前要清空计数表——`e2e/db.ts` 的 `clearRateLimits()`（`loginAsDefaultUser` 已内置），否则跑测试自己就会撞 429。
 
 ## 导出（docx / PDF 两条路径）
 

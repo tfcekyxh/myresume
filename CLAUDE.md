@@ -10,6 +10,7 @@
 | `tech-stack.md` | 技术选型与实现约定、排版参数（样式来源） |
 | `impl-plan.md` | 分步实施计划（Step 1~20） |
 | `pdf-export-plan.md` | PDF 导出实施方案（Step 17~20 详情） |
+| `demo-recording-plan.md` | 演示动图录制方案与排障记录 |
 
 改需求或新增实现约定前，先对应更新这几份文档。
 
@@ -154,6 +155,7 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **转码：GIF 用 gifski、MP4 用 ffmpeg**（`demo/scripts/convert.ts`）。gifski 走跨帧调色板且只编码变化区域，比 ffmpeg 的 `palettegen`（全局 256 色，中文抗锯齿字发灰）明显好。体积第一杠杆是 `--width`；单条 GIF 超 2.5MB 脚本会打印告警。中间产物是 `raw/*.webm`，重录后只跑 `demo:convert` 即可，不必重录。
 - **导出片段的已知局限**：下载由浏览器接管，录不到下载栏，页面内也确实没有任何成功提示，所以画面里只能看到「导出中…」。脚本用 `waitForEvent('download')` 把产物存到 `demo/output/downloads/`，确认导出真的成功了；**不在页面里伪造提示 UI**。
 - 证件照优先用 `demo/assets/photo.jpg`（放真实照片观感明显更好），没有则由 `demo/scripts/photo.ts` 用 canvas 画一张占位图。
+- 逐条实现的取舍、四个片段的完整编排与排障记录见 `demo-recording-plan.md`；改这块时两处一起更新。
 
 ## 部署（Railway）
 

@@ -8,3 +8,7 @@ server/src/generated/
 test-results/
 playwright-report/
 .trae/
+
+# 演示动图录制的中间产物与成品，不入库
+demo/output/
+demo/.auth/

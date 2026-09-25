@@ -35,6 +35,7 @@ server/          Express 后端 + Prisma
   prisma/        schema + migrations + seed.ts
 shared/          前后端共享：zod schema、类型、样式常量
 e2e/             Playwright 端到端测试
+demo/            功能演示动图的录制脚本（产物不入库）
 playwright.config.ts
 ```
 
@@ -48,6 +49,10 @@ bun run db:migrate       # 建表/改表（开发期）
 bun run db:seed          # 预置账号
 bun run test:e2e         # 跑 Playwright 端到端测试
 bun run test:e2e:ui      # 可视化 UI 模式
+bun run demo:all         # 建演示账号与基线数据 → 录制四段演示 → 转码 GIF/MP4
+bun run demo             # 只录制（globalSetup 会先建基线数据）
+bun run demo:convert     # 只转码
+bun run demo:seed        # 只重建演示账号与基线数据
 ```
 
 需在 `server/` 目录下执行 Prisma 命令（Bun 隔离安装，依赖在各 workspace 内）。
@@ -132,6 +137,23 @@ bun run test:e2e:ui      # 可视化 UI 模式
 - 表单交互选择器：添加按钮用文案（如「添加教育经历」），条目内的删除与拖拽手柄用 aria-label（「删除：教育经历 1」「拖拽排序：教育经历 1」），字段用 `getByLabel('学校')` 并按 `first()` / `nth(i)` 定位。
 - 拖拽用鼠标拖拽（`boundingBox` + `mouse.move/down/up`）验证，键盘拖拽在 dnd-kit 下不可靠。
 - 新增功能（草稿、照片、版本、导出）每完成一步，按 `e2e/auth.spec.ts` 的写法补对应 spec。
+
+## 演示动图录制（demo/）
+
+对外演示用：把关键功能片段录成 GIF / MP4。四个片段——核心编辑流、草稿自动保存 + 照片上传、导入简历（真实大模型）、版本存档/恢复 + 导出。
+
+- **与 e2e 完全隔离**：`demo/playwright.config.ts` 的 `testDir` 是 `demo/scripts`，根配置是 `./e2e`，所以 `bun run test:e2e` 天然看不到演示脚本，根配置不需要改。产物落 `demo/output/`、免登录状态落 `demo/.auth/`，均已 gitignore。**只有源码入库。**
+- **一次性依赖**：`bunx playwright install ffmpeg`（录视频必需）+ `brew install ffmpeg gifski`（转码用）。Playwright 自带的那份 ffmpeg 是给 screencast 编 vp8 的精简构建，**缺 libx264，不能拿它转 MP4**。`seed-demo.ts` 开头会检测它是否已装，缺失直接报错并给出命令。
+- **录制走 `page.screencast`，不要配 `use.video`**：`use.video` 从 context 建好就开始录，准备步骤与开场白屏都会进视频；且它给每个动作加的展示高亮会在录制时引入明显延迟——实测 `mouse.up` 一次就要 600ms，同样内容录出来 **62s vs 18s**。`startClip` / `stopClip` 见 `demo/scripts/demo-utils.ts`，`fixtures.ts` 的 auto fixture 会在用例失败时兜底停止，保证视频落盘。
+- **必须用专用 `demo` 账号**（`demo/scripts/constants.ts`），绝不能指向 `e2e-tester` 或真实账号：`seed-demo.ts` 会删掉该账号下的全部简历（照片与版本随外键级联）。用户名硬编码常量 + 黑名单断言，不从 argv 读。同理，重建简历会级联删掉该账号的 photos/versions，与产品「照片只增不删」的约定冲突——**只限 demo 账号**。
+- **`devices['Desktop Chrome']` 自带 `1280×720` viewport**，会把配置里的 `viewport` 覆盖掉。演示配置里 `viewport` 必须写在它展开**之后**，且与 `screencast.start` 的 `size` 一致，否则画面会被缩放并在底部留一条灰边。
+- **鼠标光标是自己注入的一层**（`demo-utils.ts` 的 `cursorOverlay`）：Playwright 录的是页面像素、本来没有系统光标，而 `screencast.showActions` 的内建光标是按「动作点」动画的，跟不上裸鼠标事件驱动的 dnd-kit 拖拽（拖拽只能用裸鼠标事件，见上面的 e2e 约定）。挂载**必须等 `DOMContentLoaded`**——`addInitScript` 在 document-start 执行，那时 `document.body` 还不存在，直接 `appendChild` 会静默失败、整层光标消失。演示里所有点击都要走 `moveAndClick`，否则光标不跟随。
+- **节奏靠显式停顿，不用 `slowMo`**（它会把 `waitForResponse` 一起拖长，视频里全是空转）。两条实测开销决定了参数：`page.mouse.move` 每步约 46ms（所以步数压到 6，靠光标层的 CSS 过渡补间保持顺滑）、`pressSequentially` 每键约 117ms（所以只用于短字段，长文本一律 `fill`）。一闪而过的中间态用**只延迟、不改语义**的 `page.route` 放大：草稿 PATCH 延迟 700ms 才能录到「保存中…」，照片 POST 延迟 900ms 才能录到「上传中…」。
+- **片段 3 走真实大模型**（约 30s，不为演示改 mock）：解析那一步的断言要单独写 `{ timeout: 120_000 }`，按 `expect.timeout` 的默认 15s 等会误判失败。等待段由录制时写下的 `raw/03-import.marks.json` 在转码时裁掉，首尾各留 2s（「解析中，预计 10~60 秒…」本身有信息量，全删反而突兀）。
+- **片段按文件名顺序串行、状态递进**（workers: 1），单独重录某条前必须先 `bun run demo:seed`。每片段开头调 `e2e/db.ts` 的 `clearRateLimits()`，否则反复重录自己就撞 429（导入只有 2 次/分钟）。
+- **转码：GIF 用 gifski、MP4 用 ffmpeg**（`demo/scripts/convert.ts`）。gifski 走跨帧调色板且只编码变化区域，比 ffmpeg 的 `palettegen`（全局 256 色，中文抗锯齿字发灰）明显好。体积第一杠杆是 `--width`；单条 GIF 超 2.5MB 脚本会打印告警。中间产物是 `raw/*.webm`，重录后只跑 `demo:convert` 即可，不必重录。
+- **导出片段的已知局限**：下载由浏览器接管，录不到下载栏，页面内也确实没有任何成功提示，所以画面里只能看到「导出中…」。脚本用 `waitForEvent('download')` 把产物存到 `demo/output/downloads/`，确认导出真的成功了；**不在页面里伪造提示 UI**。
+- 证件照优先用 `demo/assets/photo.jpg`（放真实照片观感明显更好），没有则由 `demo/scripts/photo.ts` 用 canvas 画一张占位图。
 
 ## 部署（Railway）
 

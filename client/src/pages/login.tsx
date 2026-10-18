@@ -78,7 +78,12 @@ function AuthFormCard({
     resolver: zodResolver(
       mode === 'login' ? loginSchema : registerSchema,
     ) as unknown as Resolver<AuthForm>,
-    defaultValues: { username: '', password: '', confirmPassword: '' },
+    defaultValues: {
+      // 登录页预填管理员账号，省一次输入；注册时留空
+      username: mode === 'login' ? 'admin' : '',
+      password: '',
+      confirmPassword: '',
+    },
   })
 
   const onSubmit = form.handleSubmit(async (values) => {

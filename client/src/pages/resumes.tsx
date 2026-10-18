@@ -137,6 +137,11 @@ export function ResumeListPage() {
       <header className="flex items-center justify-between">
         <h1 className="text-xl font-semibold">我的简历</h1>
         <div className="flex items-center gap-3">
+          {user?.isAdmin && (
+            <Link to="/admin" className="text-sm text-muted-foreground hover:text-foreground">
+              数据备份
+            </Link>
+          )}
           <span className="text-sm text-muted-foreground">{user?.username}</span>
           <Button variant="outline" onClick={handleLogout} disabled={logout.isPending}>
             登出

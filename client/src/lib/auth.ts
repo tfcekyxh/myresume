@@ -1,7 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { api, ApiError } from './api'
 
-export type CurrentUser = { id: string; username: string }
+/** isAdmin 由服务端按 ADMIN_USERNAME 判定，决定数据备份页是否可见。 */
+export type CurrentUser = { id: string; username: string; isAdmin: boolean }
 
 const currentUserKey = ['currentUser'] as const
 

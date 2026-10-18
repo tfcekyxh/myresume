@@ -7,6 +7,7 @@ import { verifySameOrigin } from './csrf'
 import { IS_PRODUCTION, PORT } from './env'
 import { rateLimit } from './rate-limit'
 import { authRouter } from './routes/auth'
+import { adminRouter } from './routes/admin'
 import { importRouter } from './routes/import'
 import { resumesRouter } from './routes/resumes'
 import { sessionMiddleware } from './session'
@@ -69,6 +70,7 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/auth', authRouter)
 app.use('/api/resumes', resumesRouter)
 app.use('/api/import', importRouter)
+app.use('/api/admin', adminRouter)
 
 // 生产环境由本进程一并托管前端构建产物，单服务部署，前后端同源。
 // 开发期前端跑在 Vite dev server 上，这里不参与，免得访问 :3000 看到过期构建。

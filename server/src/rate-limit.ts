@@ -1,11 +1,14 @@
 import type { RequestHandler } from 'express'
-import { prisma } from './db'
+import { sql } from 'drizzle-orm'
+import { db } from './db'
+import { rateLimits } from './schema'
 
 /**
- * 基于 Postgres 的固定窗口限流。
+ * 基于 SQLite 的固定窗口限流。
  *
- * 计数落在 RateLimit 表（复合主键 key + windowStart），「加一」由一条 UPSERT 完成，
- * 因此多实例部署时各实例共享同一份计数——这是选数据库而非进程内 Map 的原因。
+ * 计数落在 RateLimit 表（复合主键 key + windowStart），「加一」由一条 UPSERT 完成。
+ * 库本身也支持多连接并发（WAL），但单机自部署只有一个进程访问它，
+ * 所以这份计数天然是全局共享的。
  *
  * 代价是每个受限请求多一次数据库写。所以只给真正需要的接口挂：
  * 认证类（防爆破）、大模型解析（真金白银）、导出（CPU 密集），以及一个宽松的全局兜底。
@@ -66,13 +69,14 @@ export function rateLimit(
 
 /** 给某个 key 在当前窗口计数加一并返回加完后的值。 */
 async function bump(key: string, windowStart: Date): Promise<number> {
-  const rows = await prisma.$queryRaw<{ count: number }[]>`
-    INSERT INTO "RateLimit" ("key", "windowStart", "count")
-    VALUES (${key}, ${windowStart}, 1)
-    ON CONFLICT ("key", "windowStart")
-    DO UPDATE SET "count" = "RateLimit"."count" + 1
-    RETURNING "count"
-  `
+  const rows = await db
+    .insert(rateLimits)
+    .values({ key, windowStart, count: 1 })
+    .onConflictDoUpdate({
+      target: [rateLimits.key, rateLimits.windowStart],
+      set: { count: sql`${rateLimits.count} + 1` },
+    })
+    .returning({ count: rateLimits.count })
 
   // 清理是顺带的，不参与本次限流判断
   void cleanupStale()
@@ -88,7 +92,11 @@ const STALE_AFTER_MS = 24 * 60 * 60 * 1000
 function cleanupStale() {
   if (Math.random() > CLEANUP_PROBABILITY) return
 
-  prisma
-    .$executeRaw`DELETE FROM "RateLimit" WHERE "windowStart" < ${new Date(Date.now() - STALE_AFTER_MS)}`
-    .catch((error) => console.error('[rate-limit] 清理过期计数失败:', error))
+  // bun:sqlite 是同步驱动，db.run 直接返回 void，失败要自己 try/catch。
+  // 另外必须绑毫秒数而不是 Date：原生 SQL 里绑 Date 的比较会静默失效，测出来一行都删不掉。
+  try {
+    db.run(sql`DELETE FROM "RateLimit" WHERE "windowStart" < ${Date.now() - STALE_AFTER_MS}`)
+  } catch (error) {
+    console.error('[rate-limit] 清理过期计数失败:', error)
+  }
 }

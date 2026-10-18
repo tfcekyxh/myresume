@@ -1,8 +1,11 @@
 import { Router } from 'express'
+import { eq } from 'drizzle-orm'
 import { z } from 'zod'
-import { prisma } from '../db'
+import { isAdminUsername } from '../admin'
+import { db } from '../db'
 import { rateLimit } from '../rate-limit'
 import { requireAuth } from '../require-auth'
+import { users } from '../schema'
 import { SESSION_COOKIE_NAME } from '../session'
 
 export const authRouter = Router()
@@ -36,6 +39,12 @@ const registerSchema = z.object({
   password: z.string().min(6, '密码至少 6 个字符').max(200),
 })
 
+/** SQLite 撞唯一索引时报的错，code 形如 SQLITE_CONSTRAINT_UNIQUE。 */
+function isUniqueViolation(err: unknown): boolean {
+  if (typeof err !== 'object' || err === null || !('code' in err)) return false
+  return String((err as { code: unknown }).code).includes('CONSTRAINT')
+}
+
 authRouter.post('/register', registerLimiter, async (req, res) => {
   const parsed = registerSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -45,7 +54,12 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
 
   const { username, password } = parsed.data
 
-  const existing = await prisma.user.findUnique({ where: { username } })
+  const [existing] = await db
+    .select({ id: users.id })
+    .from(users)
+    .where(eq(users.username, username))
+    .limit(1)
+
   if (existing) {
     res.status(409).json({ error: '用户名已被占用' })
     return
@@ -55,10 +69,13 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
 
   let user
   try {
-    user = await prisma.user.create({ data: { username, passwordHash } })
+    ;[user] = await db
+      .insert(users)
+      .values({ username, passwordHash })
+      .returning({ id: users.id, username: users.username })
   } catch (err) {
     // 并发注册撞唯一索引时兜底
-    if (typeof err === 'object' && err !== null && 'code' in err && err.code === 'P2002') {
+    if (isUniqueViolation(err)) {
       res.status(409).json({ error: '用户名已被占用' })
       return
     }
@@ -71,7 +88,7 @@ authRouter.post('/register', registerLimiter, async (req, res) => {
   })
   req.session.userId = user.id
 
-  res.json({ id: user.id, username: user.username })
+  res.json({ id: user.id, username: user.username, isAdmin: isAdminUsername(username) })
 })
 
 authRouter.post('/login', loginLimiter, async (req, res) => {
@@ -82,7 +99,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   }
 
   const { username, password } = parsed.data
-  const user = await prisma.user.findUnique({ where: { username } })
+  const [user] = await db.select().from(users).where(eq(users.username, username)).limit(1)
 
   // 用户不存在与密码错误返回同样的提示，避免暴露账号是否存在
   if (!user || !(await Bun.password.verify(password, user.passwordHash))) {
@@ -96,7 +113,7 @@ authRouter.post('/login', loginLimiter, async (req, res) => {
   })
   req.session.userId = user.id
 
-  res.json({ id: user.id, username: user.username })
+  res.json({ id: user.id, username: user.username, isAdmin: isAdminUsername(user.username) })
 })
 
 authRouter.post('/logout', (req, res) => {
@@ -111,14 +128,18 @@ authRouter.post('/logout', (req, res) => {
 })
 
 authRouter.get('/me', requireAuth, async (req, res) => {
-  const user = await prisma.user.findUnique({
-    where: { id: req.session.userId },
-    select: { id: true, username: true },
-  })
+  const [user] = await db
+    .select({ id: users.id, username: users.username })
+    .from(users)
+    .where(eq(users.id, req.session.userId!))
+    .limit(1)
+
   if (!user) {
     // 会话有效但用户已被删除
     res.status(401).json({ error: '未登录' })
     return
   }
-  res.json(user)
+
+  // isAdmin 决定前端是否显示数据备份入口（接口侧另有 requireAdmin 兜底）
+  res.json({ ...user, isAdmin: isAdminUsername(user.username) })
 })

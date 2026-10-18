@@ -1,12 +1,14 @@
 import { Router } from 'express'
+import { desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 import { createEmptyResumeData, FONT, FONT_CANDIDATES, PHOTO, resumeDataSchema } from '@mymenu/shared'
-import { prisma } from '../db'
+import { db } from '../db'
 import { buildResumeDocx } from '../docx'
 import { buildResumePdf } from '../pdf'
 import { rateLimit } from '../rate-limit'
 import { requireAuth } from '../require-auth'
 import { findOwnResume, parseResumeData } from '../resume-utils'
+import { photos, resumes } from '../schema'
 import { versionsRouter } from './versions'
 
 export const resumesRouter = Router()
@@ -39,15 +41,18 @@ function formatIssues(error: z.ZodError): string[] {
 /** 简历标题。 */
 const titleSchema = z.object({ title: z.string().min(1).max(50) })
 
+/** 列表与新建共用的返回字段。 */
+const listColumns = { id: resumes.id, title: resumes.title, updatedAt: resumes.updatedAt }
+
 /** 简历列表。登录后先进这里，再选一份进入编辑。 */
 resumesRouter.get('/', async (req, res) => {
-  const resumes = await prisma.resume.findMany({
-    where: { userId: req.session.userId! },
-    orderBy: { updatedAt: 'desc' },
-    select: { id: true, title: true, updatedAt: true },
-  })
+  const list = await db
+    .select(listColumns)
+    .from(resumes)
+    .where(eq(resumes.userId, req.session.userId!))
+    .orderBy(desc(resumes.updatedAt))
 
-  res.json(resumes)
+  res.json(list)
 })
 
 resumesRouter.post('/', async (req, res) => {
@@ -57,14 +62,14 @@ resumesRouter.post('/', async (req, res) => {
     return
   }
 
-  const resume = await prisma.resume.create({
-    data: {
+  const [resume] = await db
+    .insert(resumes)
+    .values({
       userId: req.session.userId!,
       title: parsed.data.title,
       data: createEmptyResumeData(),
-    },
-    select: { id: true, title: true, updatedAt: true },
-  })
+    })
+    .returning(listColumns)
 
   res.json(resume)
 })
@@ -101,11 +106,11 @@ resumesRouter.patch('/:id', async (req, res) => {
     return
   }
 
-  const updated = await prisma.resume.update({
-    where: { id: resume.id },
-    data: { title: parsed.data.title },
-    select: { id: true, title: true, updatedAt: true },
-  })
+  const [updated] = await db
+    .update(resumes)
+    .set({ title: parsed.data.title })
+    .where(eq(resumes.id, resume.id))
+    .returning(listColumns)
 
   res.json(updated)
 })
@@ -118,7 +123,7 @@ resumesRouter.delete('/:id', async (req, res) => {
     return
   }
 
-  await prisma.resume.delete({ where: { id: resume.id } })
+  await db.delete(resumes).where(eq(resumes.id, resume.id))
   res.json({ ok: true })
 })
 
@@ -139,11 +144,11 @@ resumesRouter.patch('/:id/draft', async (req, res) => {
     return
   }
 
-  const updated = await prisma.resume.update({
-    where: { id: resume.id },
-    data: { data: parsed.data.data },
-    select: { id: true, updatedAt: true },
-  })
+  const [updated] = await db
+    .update(resumes)
+    .set({ data: parsed.data.data })
+    .where(eq(resumes.id, resume.id))
+    .returning({ id: resumes.id, updatedAt: resumes.updatedAt })
 
   res.json(updated)
 })
@@ -157,6 +162,17 @@ function base64ByteLength(base64: string): number {
   return Math.floor((base64.length * 3) / 4) - padding
 }
 
+/** 取一张照片的内容。 */
+async function findPhotoData(photoId: string) {
+  const [photo] = await db
+    .select({ id: photos.id, data: photos.data })
+    .from(photos)
+    .where(eq(photos.id, photoId))
+    .limit(1)
+
+  return photo ?? null
+}
+
 resumesRouter.get('/:id/photo', async (req, res) => {
   const resume = await findOwnResume(req.params.id, req.session.userId!)
   if (!resume) {
@@ -168,10 +184,7 @@ resumesRouter.get('/:id/photo', async (req, res) => {
     return
   }
 
-  const photo = await prisma.photo.findUnique({
-    where: { id: resume.photoId },
-    select: { id: true, data: true },
-  })
+  const photo = await findPhotoData(resume.photoId)
   if (!photo) {
     res.status(404).json({ error: '照片不存在' })
     return
@@ -202,10 +215,7 @@ resumesRouter.post('/:id/photo', async (req, res) => {
 
   // 与当前照片内容相同就复用，避免反复上传同一张图把 photos 撑大
   if (resume.photoId) {
-    const current = await prisma.photo.findUnique({
-      where: { id: resume.photoId },
-      select: { data: true },
-    })
+    const current = await findPhotoData(resume.photoId)
     if (current?.data === data) {
       res.json({ id: resume.photoId })
       return
@@ -213,14 +223,12 @@ resumesRouter.post('/:id/photo', async (req, res) => {
   }
 
   // photos 只增不改：换照片即插新行，旧行留给历史版本引用
-  const photo = await prisma.photo.create({
-    data: { resumeId: resume.id, data },
-    select: { id: true },
-  })
-  await prisma.resume.update({
-    where: { id: resume.id },
-    data: { photoId: photo.id },
-  })
+  const [photo] = await db
+    .insert(photos)
+    .values({ resumeId: resume.id, data })
+    .returning({ id: photos.id })
+
+  await db.update(resumes).set({ photoId: photo.id }).where(eq(resumes.id, resume.id))
 
   res.json(photo)
 })
@@ -233,12 +241,7 @@ resumesRouter.post('/:id/export/docx', exportLimiter, async (req, res) => {
     return
   }
 
-  const photo = resume.photoId
-    ? await prisma.photo.findUnique({
-        where: { id: resume.photoId },
-        select: { data: true },
-      })
-    : null
+  const photo = resume.photoId ? await findPhotoData(resume.photoId) : null
 
   // 字体由前端探测本机可用字体后传入，只认候选清单里的值，其余回退默认
   const requested = typeof req.body?.fontFamily === 'string' ? req.body.fontFamily : ''
@@ -270,12 +273,7 @@ resumesRouter.post('/:id/export/pdf', exportLimiter, async (req, res) => {
     return
   }
 
-  const photo = resume.photoId
-    ? await prisma.photo.findUnique({
-        where: { id: resume.photoId },
-        select: { data: true },
-      })
-    : null
+  const photo = resume.photoId ? await findPhotoData(resume.photoId) : null
 
   const data = parseResumeData(resume.data)
   const buffer = await buildResumePdf(data, photo?.data ?? null)

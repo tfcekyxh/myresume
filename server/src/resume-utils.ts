@@ -1,5 +1,7 @@
+import { and, eq } from 'drizzle-orm'
 import { createEmptyResumeData, resumeDataSchema } from '@mymenu/shared'
-import { prisma } from './db'
+import { db } from './db'
+import { resumes } from './schema'
 
 /**
  * 按 id 取当前用户的简历。
@@ -7,8 +9,14 @@ import { prisma } from './db'
  * 带上 userId 条件，别人的 resume id 一律当作不存在——各路由都走这里，
  * 避免某处漏了归属校验。
  */
-export function findOwnResume(resumeId: string, userId: string) {
-  return prisma.resume.findFirst({ where: { id: resumeId, userId } })
+export async function findOwnResume(resumeId: string, userId: string) {
+  const [resume] = await db
+    .select()
+    .from(resumes)
+    .where(and(eq(resumes.id, resumeId), eq(resumes.userId, userId)))
+    .limit(1)
+
+  return resume ?? null
 }
 
 /**

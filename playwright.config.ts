@@ -1,10 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
-
-const BASE_URL = process.env.E2E_BASE_URL ?? 'http://localhost:5173'
+import { E2E_API_PORT, E2E_BASE_URL, E2E_CLIENT_PORT, E2E_DB_PATH } from './e2e/env'
 
 export default defineConfig({
   testDir: './e2e',
-  // 测试跑在专用账号上，跑前确保它存在
+  // 测试跑在专用账号上，跑前确保它存在（同时会把库建好并补迁移）
   globalSetup: './e2e/global-setup.ts',
   // 所有用例共用同一个测试账号的简历，并发会互相覆盖，故串行执行
   workers: 1,
@@ -20,7 +19,7 @@ export default defineConfig({
   },
 
   use: {
-    baseURL: BASE_URL,
+    baseURL: E2E_BASE_URL,
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     // click / fill 等动作的自动等待超时，默认 0（跟随用例总超时）
@@ -35,11 +34,23 @@ export default defineConfig({
     },
   ],
 
-  // 本地已启动 dev 时直接复用；否则自动启动前后端
+  /**
+   * 自己起一套前后端，跑在独立端口 + 独立库文件上（见 e2e/env.ts）。
+   *
+   * 刻意不复用已在跑的 dev：那套连的是主库，复用就等于测试打到你自己的数据上。
+   * 代价是每次跑测试都要新起一套服务，换来的是可以边跑测试边开着 dev 改东西。
+   * 顺带一提，库文件的建表与迁移由 globalSetup 载入服务端模块时自动完成。
+   */
   webServer: {
-    command: 'bun run dev',
-    url: BASE_URL,
-    reuseExistingServer: true,
+    command: `VITE_PORT=${E2E_CLIENT_PORT} API_PORT=${E2E_API_PORT} PORT=${E2E_API_PORT} bun run dev`,
+    url: E2E_BASE_URL,
+    reuseExistingServer: false,
     timeout: 120_000,
+    env: {
+      SQLITE_PATH: E2E_DB_PATH,
+      // 备份页只对 ADMIN_USERNAME 开放，测试里把它指到专用测试账号上，
+      // 否则管理员相关的用例根本没法跑（见 e2e/admin-backup.spec.ts）。
+      ADMIN_USERNAME: 'e2e-tester',
+    },
   },
 })

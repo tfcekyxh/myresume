@@ -1,6 +1,5 @@
 node_modules/
 dist/
-server/src/generated/
 .env
 .env.local
 *.log
@@ -8,6 +7,13 @@ server/src/generated/
 test-results/
 playwright-report/
 .trae/
+
+# 单机自部署的库文件（含 WAL 伴生文件与导入备份时留下的 .bak）
+server/data/
+
+# e2e 与演示录制各自的独立库文件
+e2e/.db/
+demo/.db/
 
 # 演示动图录制的中间产物与成品，不入库
 demo/output/

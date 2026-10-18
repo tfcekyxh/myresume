@@ -14,7 +14,6 @@
     "start": "bun run --filter server start",
     "db:generate": "bun run --filter server db:generate",
     "db:migrate": "bun run --filter server db:migrate",
-    "db:migrate:deploy": "bun run --filter server db:migrate:deploy",
     "db:seed": "bun run --filter server db:seed",
     "db:studio": "bun run --filter server db:studio",
     "test:e2e": "playwright test",
@@ -24,15 +23,9 @@
     "demo:convert": "bun demo/scripts/convert.ts",
     "demo:all": "bun run demo:seed && bun run demo && bun run demo:convert"
   },
-  "trustedDependencies": [
-    "@prisma/client",
-    "prisma"
-  ],
   "devDependencies": {
     "@mymenu/shared": "workspace:*",
     "@playwright/test": "^1.63.0",
-    "@prisma/adapter-pg": "^7.10.0",
-    "@prisma/client": "^7.10.0",
     "dotenv": "^18.0.0"
   }
 }

@@ -1,16 +1,15 @@
 import { chromium, request as playwrightRequest } from '@playwright/test'
-import { PrismaPg } from '@prisma/adapter-pg'
-import { config } from 'dotenv'
 import { execFileSync } from 'node:child_process'
 import { existsSync, readdirSync } from 'node:fs'
 import { mkdir } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { dirname, resolve } from 'node:path'
-import { PrismaClient } from '../../server/src/generated/prisma'
+import { DatabaseSync } from 'node:sqlite'
 import { demoResumeData, seededVersionSnapshot } from '../assets/demo-resume'
 import {
   AUTH_STATE_PATH,
   BASE_URL,
+  DEMO_DB_PATH,
   DEMO_PASSWORD,
   DEMO_RESUME_TITLE,
   DEMO_USERNAME,
@@ -27,16 +26,43 @@ import { resolvePhotoBuffer } from './photo'
  *
  * 会删掉 demo 账号下的全部简历（照片与版本随外键级联），
  * 所以用户名是硬编码常量，绝不从命令行读，也绝不指向真实账号。
+ *
+ * 库访问用 Node 内置的 node:sqlite，而不是服务端那套 drizzle + bun:sqlite：
+ * 这个脚本有两条执行路径，globalSetup 那条跑在 **Node**（Playwright）里，
+ * import 不到 bun:sqlite；node:sqlite 在 Bun 与 Node 下都可用。
+ * 表名与列名对齐 server/src/schema.ts，日期列存毫秒数、JSON 列存 JSON 文本。
  */
-
-config({ path: resolve(process.cwd(), 'server/.env') })
 
 /** 这些账号上的数据是别人的，误删后果严重，硬性拦住。 */
 const FORBIDDEN_USERNAMES = ['e2e-tester', 'admin']
 
-const connectionString = process.env.DATABASE_URL
-if (!connectionString) {
-  throw new Error('缺少 DATABASE_URL，请检查 server/.env')
+/**
+ * 建库并补齐表结构。
+ *
+ * 录制时 Playwright 会先起 webServer（服务启动即自动迁移），这一步是冗余的；
+ * 但单独跑 `bun run demo:seed` 时库里可能还什么都没有，所以这里补上。
+ */
+function ensureSchema() {
+  execFileSync('bun', ['run', 'db:migrate'], {
+    cwd: resolve(process.cwd(), 'server'),
+    env: { ...process.env, SQLITE_PATH: DEMO_DB_PATH },
+  })
+}
+
+function openDb() {
+  const db = new DatabaseSync(DEMO_DB_PATH)
+  // SQLite 默认不校验外键，级联删除全靠这一行
+  db.exec('PRAGMA foreign_keys = ON')
+  db.exec('PRAGMA busy_timeout = 5000')
+  return db
+}
+
+function findUserId(db: DatabaseSync, username: string): string | undefined {
+  const row = db.prepare('SELECT id FROM User WHERE username = ? LIMIT 1').get(username) as
+    | { id: string }
+    | undefined
+
+  return row?.id
 }
 
 /**
@@ -117,49 +143,59 @@ async function seedDemo(): Promise<void> {
     throw new Error(`演示账号不能是 ${DEMO_USERNAME}，这个脚本会删掉它名下的全部简历`)
   }
 
-  const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString }) })
+  // constants.ts 已把 SQLITE_PATH 钉到 demo 专用库上（与主库、e2e 的库都隔离）
+  ensureSchema()
 
+  const db = openDb()
   try {
     // 每次重置密码，免得改过密码之后录制登不进去
     const passwordHash = hashPassword(DEMO_PASSWORD)
-    const user = await prisma.user.upsert({
-      where: { username: DEMO_USERNAME },
-      update: { passwordHash },
-      create: { username: DEMO_USERNAME, passwordHash },
-    })
+    let userId = findUserId(db, DEMO_USERNAME)
+
+    if (userId) {
+      db.prepare('UPDATE User SET passwordHash = ? WHERE id = ?').run(passwordHash, userId)
+    } else {
+      userId = crypto.randomUUID()
+      db.prepare(
+        'INSERT INTO User (id, username, passwordHash, createdAt) VALUES (?, ?, ?, ?)'
+      ).run(userId, DEMO_USERNAME, passwordHash, Date.now())
+    }
 
     // 只动这个账号名下的数据
-    await prisma.resume.deleteMany({ where: { userId: user.id } })
+    db.prepare('DELETE FROM Resume WHERE userId = ?').run(userId)
 
-    const resume = await prisma.resume.create({
-      data: {
-        userId: user.id,
-        title: DEMO_RESUME_TITLE,
-        data: demoResumeData,
-      },
-    })
+    const resumeId = crypto.randomUUID()
+    db.prepare(
+      'INSERT INTO Resume (id, userId, title, data, updatedAt) VALUES (?, ?, ?, ?, ?)'
+    ).run(resumeId, userId, DEMO_RESUME_TITLE, JSON.stringify(demoResumeData), Date.now())
 
     // 照片只挂在预置的历史版本上，当前草稿保持「未上传」——
     // 片段 2 才有「选择照片 → 预览出现」这个过程可录。
-    const photo = await prisma.photo.create({
-      data: { resumeId: resume.id, data: await resolvePhotoBase64() },
-    })
+    const photoId = crypto.randomUUID()
+    db.prepare('INSERT INTO Photo (id, resumeId, data, createdAt) VALUES (?, ?, ?, ?)').run(
+      photoId,
+      resumeId,
+      await resolvePhotoBase64(),
+      Date.now()
+    )
 
     // 不写 lastArchivedAt：草稿与这份旧快照不一致，列表首条应显示「未存档」
-    await prisma.resumeVersion.create({
-      data: {
-        resumeId: resume.id,
-        snapshot: seededVersionSnapshot,
-        photoId: photo.id,
-        note: SEEDED_VERSION_NOTE,
-      },
-    })
+    db.prepare(
+      'INSERT INTO ResumeVersion (id, resumeId, snapshot, photoId, note, createdAt) VALUES (?, ?, ?, ?, ?, ?)'
+    ).run(
+      crypto.randomUUID(),
+      resumeId,
+      JSON.stringify(seededVersionSnapshot),
+      photoId,
+      SEEDED_VERSION_NOTE,
+      Date.now()
+    )
 
     console.log(
-      `[demo:seed] 账号 ${DEMO_USERNAME} / 简历 ${resume.id}「${DEMO_RESUME_TITLE}」已就绪`
+      `[demo:seed] 账号 ${DEMO_USERNAME} / 简历 ${resumeId}「${DEMO_RESUME_TITLE}」已就绪`
     )
   } finally {
-    await prisma.$disconnect()
+    db.close()
   }
 
   await writeAuthState()

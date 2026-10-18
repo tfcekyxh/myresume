@@ -1,5 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
-import { AUTH_STATE_PATH, BASE_URL, RAW_DIR, VIEWPORT } from './scripts/constants'
+import {
+  AUTH_STATE_PATH,
+  BASE_URL,
+  DEMO_API_PORT,
+  DEMO_CLIENT_PORT,
+  DEMO_DB_PATH,
+  RAW_DIR,
+  VIEWPORT,
+} from './scripts/constants'
 
 /**
  * 演示动图录制的独立配置。
@@ -53,11 +61,16 @@ export default defineConfig({
     },
   ],
 
-  // 本地已启动 dev 时直接复用；否则自动启动前后端
+  /**
+   * 自己起一套前后端，跑在独立端口 + 独立库文件上（见 scripts/constants.ts）。
+   * 刻意不复用已在跑的 dev：那套连的是主库，而录制会反复删改 demo 账号的数据。
+   * 库文件的建表与迁移由 globalSetup 载入服务端模块时自动完成。
+   */
   webServer: {
-    command: 'bun run dev',
+    command: `VITE_PORT=${DEMO_CLIENT_PORT} API_PORT=${DEMO_API_PORT} PORT=${DEMO_API_PORT} bun run dev`,
     url: BASE_URL,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     timeout: 120_000,
+    env: { SQLITE_PATH: DEMO_DB_PATH },
   },
 })

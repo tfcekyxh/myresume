@@ -179,16 +179,16 @@ export function VersionsPage() {
         {versions?.map((version) => (
           <li
             key={version.id}
-            className="flex items-center justify-between gap-3 rounded-lg border p-3"
+            className="flex flex-col gap-2 rounded-lg border p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
           >
             <div className="min-w-0">
-              <p className="text-sm">{formatTime(version.createdAt)}</p>
+              <p className="whitespace-nowrap text-sm">{formatTime(version.createdAt)}</p>
               <p className="truncate text-xs text-muted-foreground">
                 {version.note || '（无备注）'}
               </p>
             </div>
 
-            <div className="flex shrink-0 flex-wrap justify-end gap-2">
+            <div className="flex flex-wrap gap-2 sm:shrink-0 sm:justify-end">
               <Button
                 variant="outline"
                 size="sm"
@@ -196,7 +196,7 @@ export function VersionsPage() {
               >
                 <Eye /> 查看
               </Button>
-              {/* 只对管理员显示；按钮变多后窄屏会折成两行，故上面允许换行 */}
+              {/* 只对管理员显示；窄屏按钮整排下移，宽屏才与左侧信息并排 */}
               {isAdmin && (
                 <Button
                   variant="outline"

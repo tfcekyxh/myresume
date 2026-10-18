@@ -377,3 +377,43 @@ test('删除版本只删该条，删光后草稿回到未存档', async ({ page 
     page.getByRole('listitem').filter({ hasText: '当前草稿' }).getByTestId('draft-badge')
   ).toHaveText('未存档')
 })
+
+/**
+ * 窄屏（手机视口）下版本条目不能被右侧按钮块挤坏：日期折成两行、备注被推到
+ * 按钮下方是最直接的观感问题。单独开一个 describe 固定手机视口，避免影响上面
+ * 桌面视口的用例。测试账号是管理员，会渲染「发送到邮箱」，正是按钮最宽的情形。
+ */
+test.describe('手机视口下版本条目布局', () => {
+  test.use({ viewport: { width: 390, height: 844 } })
+
+  test('窄屏下版本条目不挤压，日期单行且四个按钮都可见不溢出', async ({ page }) => {
+    await createVersionViaApi(page, '窄屏版本')
+    await goVersions(page)
+
+    // 页面无横向溢出：文档滚动宽度不超过可视宽度
+    const { clientWidth, scrollWidth } = await page.evaluate(() => ({
+      clientWidth: document.documentElement.clientWidth,
+      scrollWidth: document.documentElement.scrollWidth,
+    }))
+    expect(scrollWidth).toBeLessThanOrEqual(clientWidth)
+
+    const item = page.getByRole('listitem').filter({ hasText: '窄屏版本' })
+    await expect(item).toBeVisible()
+
+    // 日期是单行：text-sm 单行行高 20px，折成两行会超过 40px
+    const dateHeight = await item
+      .locator('p')
+      .first()
+      .evaluate((el) => el.getBoundingClientRect().height)
+    expect(dateHeight).toBeLessThan(24)
+
+    // 四个按钮（含管理员的「发送到邮箱」）都可见，且右边缘不超出视口宽度
+    for (const name of ['查看', '发送到邮箱', '恢复', '删除']) {
+      const button = item.getByRole('button', { name, exact: true })
+      await expect(button).toBeVisible()
+      const box = await button.boundingBox()
+      expect(box).not.toBeNull()
+      expect(box!.x + box!.width).toBeLessThanOrEqual(clientWidth)
+    }
+  })
+})

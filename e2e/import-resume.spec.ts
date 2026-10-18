@@ -65,6 +65,51 @@ const IMPORTED: ResumeData = {
   footer: '本简历由导入功能生成',
 }
 
+/**
+ * 自带文本层的 PDF 里的文字（ASCII，Helvetica/WinAnsi，>= 20 字才能点解析）。
+ * 用 ASCII 是为了避开 CJK 字体的编码问题，让 pdfjs 能稳定取出文本层。
+ */
+const PDF_TEXT = 'PDF import test resume: senior backend engineer with many years experience.'
+
+/** 转义 PDF 字符串字面量里的特殊字符（\、括号）。 */
+function escapePdfText(text: string): string {
+  return text.replace(/\\/g, '\\\\').replace(/\(/g, '\\(').replace(/\)/g, '\\)')
+}
+
+/**
+ * 手搓一份最小、合法、带文本层的 PDF（单页，Helvetica + WinAnsi，纯 ASCII）。
+ * 不引入任何 PDF 生成依赖；偏移量按字符串长度算，ASCII 下字符数即字节数。
+ *
+ * 字号用 10 而不是更大的值：24pt 下长文本会超出 MediaBox 右边界，pdfjs / pdftotext
+ * 都会丢弃跑出页面的字符（实测都在约 49 字处截断），提取结果不完整。
+ */
+function buildMinimalPdf(text: string): Buffer {
+  const content = `BT /F1 10 Tf 72 720 Td (${escapePdfText(text)}) Tj ET`
+  const objects = [
+    '<< /Type /Catalog /Pages 2 0 R >>',
+    '<< /Type /Pages /Kids [3 0 R] /Count 1 >>',
+    '<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>',
+    '<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>',
+    `<< /Length ${content.length} >>\nstream\n${content}\nendstream`,
+  ]
+
+  let pdf = '%PDF-1.4\n'
+  const offsets: number[] = []
+  objects.forEach((body, index) => {
+    offsets.push(pdf.length)
+    pdf += `${index + 1} 0 obj\n${body}\nendobj\n`
+  })
+
+  const xrefOffset = pdf.length
+  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`
+  for (const offset of offsets) {
+    pdf += `${String(offset).padStart(10, '0')} 00000 n \n`
+  }
+  pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefOffset}\n%%EOF\n`
+
+  return Buffer.from(pdf, 'latin1')
+}
+
 /** mock 解析接口返回固定 ResumeData，不打真实大模型。 */
 function mockParse(page: Page, data: ResumeData) {
   return page.route(PARSE_API, (route) =>
@@ -154,6 +199,37 @@ test('粘贴文本与选择 txt 文件提取文字后解析，确认覆盖时表
   await expect(page.getByLabel('姓名')).toHaveValue('张三')
   await expect(page.getByLabel('学校')).toHaveValue('导入大学')
   await expect(page.getByText('工作经历 1')).toBeVisible()
+})
+
+test('选择自带文本层的 pdf 文件后，文字在浏览器本地提取并填入文本框，且无未捕获异常', async ({
+  page,
+}) => {
+  // 提取走按需加载的 pdfjs chunk；解析接口仍 mock，不打真实大模型
+  await mockParse(page, IMPORTED)
+
+  // 本用例正是为「懒加载 chunk 抛 ReferenceError 导致页面崩」这类回归把关
+  const pageErrors: Error[] = []
+  page.on('pageerror', (error) => pageErrors.push(error))
+
+  await page.getByTestId('import-resume-button').click()
+  const dialog = page.getByRole('dialog')
+  await expect(dialog.getByText('导入简历', { exact: true })).toBeVisible()
+
+  await page.getByTestId('import-resume-file').setInputFiles({
+    name: 'resume.pdf',
+    mimeType: 'application/pdf',
+    buffer: buildMinimalPdf(PDF_TEXT),
+  })
+
+  // 出现「已提取…」提示
+  await expect(dialog.getByText(/已提取.*resume\.pdf/)).toBeVisible()
+  // 浏览器本地提取出的文字被填入文本框
+  await expect(page.getByLabel('简历文本')).toHaveValue(PDF_TEXT)
+  // 提取到的字数足够，开始解析按钮因此可点
+  await expect(page.getByTestId('import-parse-button')).toBeEnabled()
+
+  // 全程没有未捕获异常（如 pdfjs 懒加载 chunk 在求值时抛 ReferenceError）
+  expect(pageErrors).toEqual([])
 })
 
 test('取消对话框不改动表单：输入阶段取消与解析预览返回后取消均如此', async ({ page }) => {

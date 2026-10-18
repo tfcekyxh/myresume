@@ -1,0 +1,5 @@
+# 组件测试（bun test + @testing-library/react）：
+# Bun 里没有浏览器环境，靠 src/test/setup.ts 注册 happy-dom 的全局 window/document。
+# preload 在测试文件与其静态 import 之前执行，所以 React 渲染时 DOM 已就绪。
+[test]
+preload = ["./src/test/setup.ts"]

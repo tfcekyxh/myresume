@@ -37,6 +37,8 @@ client: react react-dom react-router-dom tailwindcss
         @tanstack/react-query @dnd-kit/core @dnd-kit/sortable @dnd-kit/utilities
         lucide-react mammoth pdfjs-dist
         （另有 shadcn add 生成的 radix 组件）
+        -d 组件测试：@testing-library/react @testing-library/dom
+           @happy-dom/global-registrator @types/bun（bun:test 的类型）
 
 server: express zod express-session drizzle-orm docx pdfkit
         -d drizzle-kit dotenv @types/express-session @types/pdfkit
@@ -44,7 +46,7 @@ server: express zod express-session drizzle-orm docx pdfkit
 shared: zod
 ```
 
-被 Bun 取代、无需安装的依赖：`argon2`（用 `Bun.password`）、`tsx`/`ts-node`（直接跑 TS）、`nodemon`（`bun --watch`）、`vitest`（`bun test`）。
+被 Bun 取代、无需安装的依赖：`argon2`（用 `Bun.password`）、`tsx`/`ts-node`（直接跑 TS）、`nodemon`（`bun --watch`）、`vitest` + `jsdom`（`bun test` + happy-dom，组件测试同样走这套）。
 
 注意 `dotenv` **仍然需要**：Bun 运行时能自动加载 `.env`，但 drizzle-kit 不保证加载，必须在 `drizzle.config.ts` 里显式读一次。
 
@@ -282,6 +284,8 @@ bun run --filter '*' dev     # 跨 workspace 执行
 
 - 提交 `bun.lock`，删除 `package-lock.json`。
 - 需要 Bun >= 1.2。
+
+**前端组件测试也走 `bun test`**，不引入 Vitest：React Testing Library 渲染需要 DOM，由 `client/bunfig.toml` 的 `[test] preload` 预加载 `client/src/test/setup.ts`，其中用 `@happy-dom/global-registrator` 把 happy-dom 的 `window` / `document` 注册成全局。好处是省掉「Vitest 版本必须对上 Vite 版本」这层兼容负担，也不用两套配置（测试与源码同目录，命名 `*.test.tsx`）。命令 `bun run test:component`，分工与写法见 `CLAUDE.md` 的「组件测试」。
 
 <br />
 

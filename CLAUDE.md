@@ -30,6 +30,9 @@
 
 ```
 client/         React 前端
+  bunfig.toml    组件测试的 preload 配置（注册 happy-dom）
+  src/test/      setup.ts：把 happy-dom 的 window/document 注册成全局
+  src/**/*.test.tsx  组件测试与源码同目录
 server/          Express 后端 + Drizzle
   .env          库文件路径、SESSION_SECRET、管理员与大模型配置（不入库）
   assets/fonts/ PDF 导出用的思源黑体静态字重 + OFL 许可
@@ -56,6 +59,7 @@ bun run db:migrate       # 建库 / 补迁移（服务启动时也会自动跑�
 bun run db:seed          # 预置账号：bun run db:seed -- -u <用户> -p <密码>
 bun run db:studio        # 浏览库内容
 bun run backup:mail      # 手动发一次备份邮件（与每月定时任务同一条代码路径）
+bun run test:component   # 跑前端组件测试（bun test + React Testing Library）
 bun run test:e2e         # 跑 Playwright 端到端测试
 bun run test:e2e:ui      # 可视化 UI 模式
 bun run demo:all         # 建演示账号与基线数据 → 录制四段演示 → 转码 GIF/MP4
@@ -137,11 +141,21 @@ bun run demo:seed        # 只重建演示账号与基线数据
 
 字体、字号、行距、页边距、标题样式（白字黑底）、要点列表缩进等数值，提取自原 Word 简历，见 `tech-stack.md` 的「样式来源」表。实现时以该表为准。
 
+## 组件测试
+
+与 e2e 分层：**e2e 管「点下去真的发生了什么」，组件测试管渲染分支**（空状态、占位文案、按权限决定按钮有无、请求过程中的文案）。跑得快、不依赖服务与数据库，所以穷举分支的成本低；反过来只靠 e2e 才能验证的行为（草稿落库、导出产物、窄屏排版这类观感回归）**不要**搬到这里。
+
+- 框架：**Bun 内置 `bun test` + `@testing-library/react` + happy-dom**，不引入 Vitest / Jest。依赖装在 `client/`，命令 `bun run test:component`（即 `bun run --filter client test`，`client/package.json` 的 `test` 脚本是 `bun test`）。
+- 测试文件与源码同目录，命名 `*.test.tsx`（如 `client/src/pages/versions.test.tsx`）。构建时 `tsc -b` 会把它们一起过类型检查，因此 `client/tsconfig.app.json` 的 `types` 里带了 `@types/bun`（提供 `bun:test` 的类型）。
+- DOM 环境：`client/bunfig.toml` 的 `[test] preload` 指向 `client/src/test/setup.ts`，由它注册 happy-dom 的全局 `window` / `document`。preload 早于测试文件的静态 import，所以渲染时 DOM 已就绪。
+- **数据来源一律用 `mock.module` 替掉 `client/src/lib/*` 的 react-query hooks**，不搭 QueryClient、也不 mock fetch：组件取数全走这些 hooks，替掉它们就等于给了组件确定的数据。**mock 必须在导入被测组件之前注册**，所以被测组件用 `await import()` 动态导入——静态 import 会被提升到注册之前，拿到的还是真实模块。
+- 断言用户可见的文案与角色，不断言 CSS 类名（与 e2e 同一条要求）；一个用例只讲一件事，同一行为的多种路径合进一个用例。
+
 ## E2E 测试
 
 - 框架：Playwright（`@playwright/test`，仓库根安装）。测试在 `e2e/`，配置在 `playwright.config.ts`。
 - **测试验证交给 `e2e-tester` agent 执行**：功能新增或改动后，用 e2e-tester 子代理完成 e2e 测试的编写与运行验证，不要自己手跑代替。
-- **只写端到端**：走真实浏览器 + 真实后端，不写接口级（`request`）测试；断言聚焦用户可见行为。
+- **e2e 层只写端到端**：走真实浏览器 + 真实后端，不写接口级（`request`）测试；断言聚焦用户可见行为。渲染分支改由上面的组件测试覆盖。
 - **一个用例只讲一件事，避免重复**：同一行为的多种路径用循环或串行步骤合进一个用例，不拆成多个。
 - **复用系统 Chrome**：配置用 `channel: 'chrome'`，不下载 Playwright 自带 Chromium。变更运行机器时若 Chrome 非默认路径，需调整。
 - **测试起自己的一套前后端**：`e2e/env.ts` 把 `SQLITE_PATH` 钉到 `e2e/.db/e2e.sqlite`，端口用 5200（前端）/ 3100（后端），`webServer.command` 会把这两组环境变量注入 `bun run dev`，并且 `reuseExistingServer: false`。**不复用已在跑的 dev**——那套连的是主库，复用就等于测试打到你自己的数据上；这样也就能边跑测试边开着 dev。

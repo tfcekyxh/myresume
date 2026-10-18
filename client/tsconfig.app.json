@@ -4,7 +4,8 @@
     "target": "es2023",
     "lib": ["ES2023", "DOM"],
     "module": "esnext",
-    "types": ["vite/client"],
+    // 组件测试（*.test.tsx）与源码同目录，构建时会一起过 tsc，所以要带上 bun:test 的类型
+    "types": ["vite/client", "@types/bun"],
     "allowArbitraryExtensions": true,
     "skipLibCheck": true,
 

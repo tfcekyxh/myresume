@@ -3,6 +3,7 @@ import express from 'express'
 import type { NextFunction, Request, RequestHandler, Response } from 'express'
 import helmet from 'helmet'
 import { RESUME_MODULE_ORDER } from '@mymenu/shared'
+import { startBackupScheduler } from './backup-scheduler'
 import { verifySameOrigin } from './csrf'
 import { IS_PRODUCTION, PORT } from './env'
 import { rateLimit } from './rate-limit'
@@ -109,4 +110,7 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
 app.listen(PORT, '0.0.0.0', () => {
   console.log(`server listening on http://0.0.0.0:${PORT}`)
+
+  // 每月自动把整库快照发一封邮件；没配发信通道时这里是空转（见 backup-scheduler.ts）
+  startBackupScheduler()
 })

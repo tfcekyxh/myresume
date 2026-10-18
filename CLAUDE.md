@@ -55,6 +55,7 @@ bun run db:generate      # 由 schema 生成迁移 SQL（改表后跑，产物�
 bun run db:migrate       # 建库 / 补迁移（服务启动时也会自动跑一次）
 bun run db:seed          # 预置账号：bun run db:seed -- -u <用户> -p <密码>
 bun run db:studio        # 浏览库内容
+bun run backup:mail      # 手动发一次备份邮件（与每月定时任务同一条代码路径）
 bun run test:e2e         # 跑 Playwright 端到端测试
 bun run test:e2e:ui      # 可视化 UI 模式
 bun run demo:all         # 建演示账号与基线数据 → 录制四段演示 → 转码 GIF/MP4
@@ -72,6 +73,7 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - drizzle-kit 不保证自动加载，由 `drizzle.config.ts` 里的 dotenv 显式读取 `server/.env`。
 - `SQLITE_PATH`：库文件路径，留空则用默认值 `server/data/app.sqlite`；部署挂载卷时改到卷内路径。
 - `ADMIN_USERNAME`：数据备份的唯一管理员。**留空即无人有权限，`/api/admin/*` 一律 403。**
+- `MAIL_API_URL` / `MAIL_API_KEY` / `MAIL_FROM` / `BACKUP_EMAIL_TO`：每月自动备份邮件。默认走 Resend 的 HTTP 接口；`MAIL_API_KEY` 留空时该功能关闭（不设为启动必需）。Resend 未验证自有域名时 `MAIL_FROM` 只能是 `onboarding@resend.dev`，且只能发给注册邮箱。
 
 ## 开发顺序
 
@@ -184,6 +186,8 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **跨版本的备份直接拒绝**：校验时比对上传文件与当前库的 `__drizzle_migrations` 记录，不一致就 400 并说明原因——搬进来只会让后续查询报错。
 - **导入后要求重新登录**：`Session` 表被一起还原，当前会话可能已经失效，前端拿到成功响应后直接回登录页。
 - 上传走二进制体（`Content-Type: application/octet-stream`），这两个 POST 接口单独挂 `express.raw`（200mb 上限），因为全局 `express.json` 只有 2mb。
+- **每月自动发一封备份邮件**（`server/src/backup-scheduler.ts` + `server/src/mail.ts`）：定时器每小时醒一次，只判断「本月是否已发」，没发过就取一份快照当附件发到 `BACKUP_EMAIL_TO`（默认 `your-email@example.com`）。**不要改成「定时到一个月后」**——部署重启、容器迁移会把计时器清零，月度任务错过就是整月空档；现在重启/宕机/漏跑都能自动补上，同月也不会重复发。已发月份记在 `<库文件>.backup-mail.json`（与库同目录，落在挂载卷里），**刻意不建表**：新增表会改变迁移哈希，而备份导入按迁移哈希做跨版本校验，那会把已有导出文件全判成「跨版本」而拒收。
+- **发信走第三方邮件 API 的 HTTP 接口，不走 SMTP**：云端平台对出站 25/465 端口常有封锁。请求体按 Resend 约定组织（`attachments` 里 base64 的 `content`），换服务商只改 `MAIL_API_URL`。失败退避 6 小时重试，错误原文记进状态文件。手动补发用 `bun run backup:mail`，发成功后本月不会再自动发第二封。
 
 ## 部署（Railway）
 
@@ -196,7 +200,7 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **面板需要设置**：Build Command 为 `bun run build`；Start Command 为 `bun run start`；Healthcheck Path 为 `/api/health`。**不再需要 Pre-deploy Command**：迁移改由服务启动时自动执行（`server/src/db.ts` 载入即跑 `migrate()`），也不再需要 Postgres 服务。
 - **必须挂 Volume 并把 `SQLITE_PATH` 指过去**：库文件默认落在 `server/data/app.sqlite`，而容器文件系统是临时的——**不挂持久卷的话每次重新部署数据全丢**。挂上卷后在面板设 `SQLITE_PATH=/data/app.sqlite`（目录由 `db.ts` 启动时 `mkdirSync` 创建）。
 - **Start Command 必须显式指定**：Railpack 会自动把 Vite 产物识别成纯静态站点并改用 Caddy 托管，那样 Express 根本不启动、接口全挂。显式指定才能关掉该行为。
-- **环境变量**（面板服务变量）：`SQLITE_PATH`（指向卷内路径）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`ADMIN_USERNAME`（要用备份功能就得设，且跨部署保持一致）、`NODE_ENV=production`。`PORT` 由平台注入；`LLM_*` 按需设置。
+- **环境变量**（面板服务变量）：`SQLITE_PATH`（指向卷内路径）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`ADMIN_USERNAME`（要用备份功能就得设，且跨部署保持一致）、`NODE_ENV=production`。`PORT` 由平台注入；`LLM_*`、`MAIL_*` 按需设置。
 - **迁移产物要跟着进镜像**：`server/drizzle/` 是服务启动时跑迁移的依据，必须提交进仓库、随源码进镜像，**不要**加进 `.gitignore`。
 - **不再有代码生成这一步**：Drizzle 运行时直接用 `server/src/schema.ts`，Prisma 时期那套「生成产物进镜像 / `trustedDependencies` 放行 postinstall / 显式声明 `@prisma/client-runtime-utils` / 构建前先跑 `db:generate`」的麻烦都不存在了。
 - **登录账号需手工 seed 一次**：`db:seed` 是按 username 幂等 upsert 且会更新密码，放进部署流程等于每次部署重置密码。

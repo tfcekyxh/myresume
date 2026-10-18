@@ -16,6 +16,7 @@
     "db:migrate": "bun run --filter server db:migrate",
     "db:seed": "bun run --filter server db:seed",
     "db:studio": "bun run --filter server db:studio",
+    "backup:mail": "bun run --filter server backup:mail",
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "demo": "playwright test --config demo/playwright.config.ts",

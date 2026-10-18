@@ -449,6 +449,54 @@
 
 <br />
 
+## 阶段 I：单机自部署（SQLite）与数据备份
+
+**背景**：原来依赖云 PostgreSQL（阿里云 RDS）。目标是单机自部署——整个应用的数据就是磁盘上一个 `.sqlite` 文件，不依赖任何数据库服务；在此之上提供只对管理员开放的整库导出 / 导入。
+
+**关键约束（决定了选型）**：Prisma 7 的 SQLite 适配器只支持 `better-sqlite3` 与 libSQL，而 `better-sqlite3` 是 Node 原生模块，**Bun 加载不了**——Bun 自 1.3.2 起改为快速失败并提示改用 `bun:sqlite`；社区那种基于 `bun:sqlite` 的 Prisma 适配器还停在 alpha，不适合放进核心数据路径。因此改选 **Drizzle ORM + `drizzle-orm/bun-sqlite`**。
+
+### Step 22　数据层：Prisma + PostgreSQL → Drizzle + SQLite　✅
+
+**产出**
+
+- `server/src/schema.ts`：六张表的 Drizzle 定义，其中 `Session` 是新增的（替代 connect-pg-simple 自建的那张）。表名与列名沿用 Prisma 时期的写法，时间列一律存毫秒数
+- `server/src/db.ts`：用 `bun:sqlite` 开库，设 `PRAGMA foreign_keys / journal_mode = WAL / busy_timeout`，并在模块载入时自动补迁移
+- `server/drizzle.config.ts` + `server/drizzle/`：迁移配置与产物（**产物入库**，与原来的 Prisma migrations 一样）
+- `server/src/session.ts`：自建 SQLite session store（get/set/destroy/touch），过期行按 1% 概率随请求清理
+- `server/src/rate-limit.ts`、`server/src/resume-utils.ts` 与 auth / resumes / versions 三个路由：全部查询改写为 Drizzle
+- `server/src/seed.ts`：替代 `prisma/seed.ts`（命令行 `-u` / `-p` 用法不变）
+- 删除整个 `server/prisma/`（含 Postgres 方言的迁移）与 `server/src/generated/`
+- 依赖调整：移除 `prisma` / `@prisma/client` / `@prisma/adapter-pg` / `@prisma/client-runtime-utils` / `pg` / `connect-pg-simple` 及对应 `@types`，新增 `drizzle-orm` / `drizzle-kit`
+- `e2e/db.ts`、`demo/scripts/seed-demo.ts`：改用 Node 内置的 `node:sqlite`（这两个脚本的双运行时场景见 [tech-stack.md](./tech-stack.md)）
+
+**三个必须记住的坑（都已实测确认）**：`PRAGMA foreign_keys = ON` 不能省，否则级联删除静默失效；原生 `sql` 模板里绑 `Date` 比较会静默失效，时间条件必须传毫秒数；`updatedAt` 带 `$onUpdate`，所以 `lastArchivedAt` 对齐基准必须走原生 SQL。
+
+**验证**
+
+- 接口冒烟：草稿 JSON 往返、存档基准对齐、会话落库与登出、docx / PDF 导出均正常
+- `bun run test:e2e` 全绿：原有 60 条用例换库后无回归
+
+<br />
+
+### Step 23　整库导出与导入（仅管理员）　✅
+
+**产出**
+
+- `server/src/admin.ts`：`requireAdmin`，按环境变量 `ADMIN_USERNAME` 判定；未配置时一律 403
+- `server/src/backup.ts`：`VACUUM INTO` 导出一致快照；`inspectSnapshot` 校验（完整性、表结构、迁移版本一致）；`restoreFrom` 整库覆盖（ATTACH + 单事务 + 外键自检），覆盖前自动留一份 `<库文件>.bak-<时间戳>`
+- `server/src/routes/admin.ts`：`GET /api/admin/backup`、`POST /api/admin/backup/validate`、`POST /api/admin/backup/import`，后两者用 `express.raw` 收二进制体（全局 `express.json` 的 2mb 不够）
+- `GET /api/auth/me` 与登录 / 注册响应增加 `isAdmin`
+- 前端：`client/src/lib/backup.ts`、`client/src/pages/admin.tsx`、`client/src/components/require-admin.tsx`、`/admin` 路由；简历列表页页头按 `isAdmin` 渲染「数据备份」链接
+- `e2e/admin-backup.spec.ts`：导出产物可被 SQLite 打开且结构一致；导入后「导入前新建的简历」确实消失；非管理员看不到入口 / 访问被重定向 / 三个接口 403；非法文件给出中文提示且数据未动
+
+**验证**
+
+- 手工走通：导出 → 改数据 → 导入 → 数据回滚，并确认导入后服务仍能正常读写
+- 非管理员、非法上传（随机字节 / 非本应用的合法 SQLite）全部被拒
+- `bun run test:e2e` 全绿（64 条）
+
+<br />
+
 ## 风险点
 
 | 风险 | 影响步骤 | 应对 |
@@ -467,5 +515,11 @@
 | 排版逻辑变成 docx / PDF 两份 | Step 18 | 两侧只读 `shared/style-constants.ts`，禁止硬编码；改版式时同步检查 |
 | 变量字体实例化后 name 表带 Thin 后缀 | Step 17 | 显式重建 name 表并校验 family 名 |
 | PDF 分页与 docx 不一致 | Step 18 | 以 PDF 为准（它是交付物）；必要时对章节加保护性换行 |
+| SQLite 单写者，不能横向扩多实例 | Step 22 | 单机自部署本来就是这套方案的前提；限制写在一个进程内，配 `busy_timeout` 与 WAL |
+| 原生 `sql` 模板绑 `Date` 比较静默失效 | Step 22 | 时间条件一律传毫秒数；类型化 API 传 `Date` 安全 |
+| 忘了 `PRAGMA foreign_keys = ON` 导致级联删除失效 | Step 22 | 开库时固定设置，探针脚本里已加断言 |
+| Playwright 跑在 Node 上，测试脚本 import 不到 `bun:sqlite` | Step 22 | 测试与演示脚本改用 Node 内置的 `node:sqlite` 读写同一个库文件 |
+| 导入是整库覆盖，误操作不可逆 | Step 23 | 二次确认 + 覆盖前自动留 `.bak` 快照 + 跨版本备份直接拒绝 |
+| 备份文件把整个库（含他人数据）搬进搬出 | Step 23 | 只对 `ADMIN_USERNAME` 开放；未配置时接口一律 403 |
 
 <br />

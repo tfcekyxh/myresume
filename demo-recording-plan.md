@@ -64,8 +64,9 @@ demo/
 - `use`：`baseURL`、`viewport: 1200×800`、`deviceScaleFactor: 1`、`storageState`（绝对路径，避免依赖 cwd）。
 - **不配 `use.video`**，录制由各条 spec 用 `page.screencast` 显式开关（原因见下）。
 - `projects[0].use` 里 **`viewport` 必须写在 `...devices['Desktop Chrome']` 之后**：它自带 `1280×720`，会覆盖前面的配置，与录制的 `size` 对不上时画面会被缩放并在底部留一条灰边。
+- **webServer 自己起一套前后端**：`VITE_PORT=5300` / `API_PORT=3200`、`reuseExistingServer: false`，并在 `env` 里注入 `SQLITE_PATH=demo/.db/demo.sqlite`。与 dev（5173 + 3000）、e2e（5200 + 3100）都错开，录制时不必停掉手上的 dev；反过来，**复用已在跑的 dev 就等于连回主库**，而录制会反复删改数据，绝不能这么做。
 
-`package.json` 新增脚本（全部从仓库根执行，因为 `e2e/db.ts` 依赖 `process.cwd()` 找 `server/.env`）：
+`package.json` 新增脚本（全部从仓库根执行：`scripts/constants.ts` 用 `process.cwd()` 定位目录，并把库文件钉在 `demo/.db/demo.sqlite`）：
 
 ```json
 "demo": "playwright test --config demo/playwright.config.ts",
@@ -74,7 +75,7 @@ demo/
 "demo:all": "bun run demo:seed && bun run demo && bun run demo:convert"
 ```
 
-`.gitignore` 追加 `demo/output/`、`demo/.auth/`。
+`.gitignore` 追加 `demo/output/`、`demo/.auth/`、`demo/.db/`（录制专用的库文件）。
 
 ## 关键实现点
 
@@ -161,11 +162,12 @@ clips 按文件名顺序串行跑，状态是递进的（片段 1 编辑后的�
 
 ### 7. demo 账号与基线数据（`seed-demo.ts`）
 
-- **env 加载**：Bun 只从 cwd 自动读 `.env`，脚本从仓库根跑，所以显式 `config({ path: resolve(process.cwd(), 'server/.env') })`（与 `e2e/db.ts` 的假设一致）。
-- **连接**：`new PrismaClient({ adapter: new PrismaPg({ connectionString }) })`，Prisma Client 从 `../../server/src/generated/prisma` 导入。
-- **密码哈希借 bun 子进程算**：这个脚本有两条执行路径 —— `bun run demo:seed` 直接跑，以及被 Playwright 的 globalSetup 加载（那是 **Node 进程，没有 `Bun` 全局**）。为免两条路径不一致，统一用 `execFileSync('bun', ['-e', ...])`，与 `e2e/db.ts` 的 `hashPassword` 做法相同。
+- **库文件与端口隔离**：`scripts/constants.ts` 把 `process.env.SQLITE_PATH` **覆盖**为 `demo/.db/demo.sqlite`（覆盖而不是兜底，免得 shell 里正好设过就落到你自己的库上），并导出 `DEMO_CLIENT_PORT` / `DEMO_API_PORT`。它同时被 playwright.config 与各脚本引用，所以 webServer 子进程也继承到同一个路径。
+- **连接用 `node:sqlite`，不是 `bun:sqlite`**：这个脚本有两条执行路径 —— `bun run demo:seed` 跑在 Bun，被 Playwright 的 globalSetup 加载时跑在 **Node**（Playwright 不支持 Bun 运行时）。`bun:sqlite` 在 Node 下 import 不了，而 `node:sqlite` 两边都可用，所以直接用它 + 原生 SQL 读写同一个库文件，表名 / 列名对齐 `server/src/schema.ts`。`e2e/db.ts` 同理。
+- **先补表结构**：`ensureSchema()` 借 `execFileSync('bun', ['run', 'db:migrate'])` 跑一次服务端迁移（cwd 为 `server/`、带上 `SQLITE_PATH`）。录制时 webServer 起服务已经建过库，这一步是幂等的；单独跑 `bun run demo:seed` 时靠它建表。
+- **密码哈希借 bun 子进程算**：Node 那条路径上没有 `Bun` 全局，所以统一用 `execFileSync('bun', ['-e', ...])` 来算，与 `e2e/db.ts` 的 `hashPassword` 做法相同。
 - **安全护栏**：用户名硬编码常量 `demo`，不读 argv；开头断言用户名不在 `['e2e-tester', 'admin']` 里；只操作该用户的数据。
-- **幂等**：`user.upsert`（每次重置密码，方便录屏）→ 删掉该账号旧简历 → 建一份「张伟的简历（前端工程师）」写入 `assets/demo-resume.ts` → 建 `photo` 行 → 预置 1 条带备注「投递前端岗」的 `resumeVersion`，让片段 4 的列表非空。
+- **幂等**：按用户名查到就改密码、查不到就插入（每次重置密码，方便录屏）→ 删掉该账号旧简历 → 建一份「张伟的简历（前端工程师）」写入 `assets/demo-resume.ts` → 建 `photo` 行 → 预置 1 条带备注「投递前端岗」的 `resumeVersion`，让片段 4 的列表非空。JSON 列（`data` / `snapshot`）要自己 `JSON.stringify`，日期列存毫秒数。
 - **照片只挂在预置版本上，当前草稿保持「未上传」**：片段 2 才有「选择照片 → 预览出现」这个过程可录。
 - **预置快照刻意是一份更早的修订版**（求职意向不同、教育/技能/项目各少一条）：片段 4 恢复之后表单内容明显变样，看得见覆盖确实发生；同时当前草稿与它不一致，列表首条显示「未存档」，点存档后徽标变「已存档」，整段有个完整的弧线。
 - **注意**：重建简历会级联删除该账号下的 photos/versions，这与产品「照片只增不删」的约定冲突，但仅限 `demo` 账号，脚本注释里写明。
@@ -225,6 +227,8 @@ ffmpeg -v error -i demo/output/raw/01-editing.webm \
 | **`use.video` 让录制时长翻几倍** | 它给每个动作加高亮延迟（`mouse.up` 约 600ms）。改用 `page.screencast` 显式开关 |
 | **真实模型的断言 15s 超时误判** | 解析那一步单独 `toBeVisible({ timeout: 120_000 })`，不要吃 `expect.timeout` 的默认值 |
 | globalSetup 里没有 `Bun` 全局 | 密码哈希借 `bun -e` 子进程；`import.meta.main` 在 CJS 下会语法报错，CLI 入口另开 `seed-cli.ts` |
+| Playwright 跑在 Node 上，脚本 import 不到 `bun:sqlite` | globalSetup 与 `e2e/db.ts` 一律用 Node 内置的 `node:sqlite`（Bun 与 Node 下都能用） |
+| 录制跑到你自己的库上 | `constants.ts` 强制覆盖 `SQLITE_PATH` 到 `demo/.db/demo.sqlite`；webServer 注入同一路径且 `reuseExistingServer: false` |
 | 片段 4 的「恢复」是 `window.location.assign` 整页跳转 | 自绘光标靠 `addInitScript` 在导航后重建；跳转后第一个动作必须走 `moveTo`/`moveAndClick`，否则光标要等第一次鼠标移动才出现 |
 | 撞限流 429 | 每片段开头 `clearRateLimits()`；导入重录间隔 ≥65s |
 | macOS 屏幕录制权限 | **不需要**：录的是 CDP 页面像素，不是屏幕采集；headless 录制，帧率更稳 |

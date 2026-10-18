@@ -19,9 +19,9 @@
 - 运行时 / 包管理：Bun 1.4.2
 - 前端：React 19 + TypeScript + Vite 8，Tailwind CSS，shadcn/ui（源码拷贝式）
 - 服务端：Express 5 + zod（DTO 校验）
-- ORM：Prisma 7.10.0（连接串在 `prisma.config.ts`，运行时显式传驱动适配器）
-- 数据库：PostgreSQL（阿里云 RDS）
-- 鉴权：express-session + connect-pg-simple（数据库 Session）
+- ORM：Drizzle ORM 0.45（`drizzle-orm/bun-sqlite`，没有代码生成步骤）
+- 数据库：SQLite（单文件，库文件即全部数据；迁移产物在 `server/drizzle/`，服务启动时自动执行）
+- 鉴权：express-session + 自建 SQLite session store（`server/src/session.ts`）
 - 密码哈希：`Bun.password`（内置 argon2id）
 - 导出：`docx` 库代码构建 docx；PDF 由服务端用 PDFKit 直接生成并内嵌字体（见 `pdf-export-plan.md`）
 - 工程：Bun workspaces：`client/` + `server/` + `shared/`
@@ -30,13 +30,19 @@
 
 ```
 client/         React 前端
-server/          Express 后端 + Prisma
-  .env          数据库连接串、SESSION_SECRET（不入库）
+server/          Express 后端 + Drizzle
+  .env          库文件路径、SESSION_SECRET、管理员与大模型配置（不入库）
   assets/fonts/ PDF 导出用的思源黑体静态字重 + OFL 许可
-  prisma/        schema + migrations + seed.ts
+  src/schema.ts 表结构定义
+  drizzle.config.ts + drizzle/  迁移配置与迁移产物（产物入库）
+  src/seed.ts   预置登录账号
+  data/         SQLite 库文件（不入库）
 shared/          前后端共享：zod schema、类型、样式常量
 e2e/             Playwright 端到端测试
+  env.ts         测试专用的库文件与端口
+  .db/           测试专用库文件（不入库）
 demo/            功能演示动图的录制脚本（产物不入库）
+  .db/           录制专用库文件（不入库）
 playwright.config.ts
 ```
 
@@ -45,9 +51,10 @@ playwright.config.ts
 ```bash
 bun install              # 工作区安装依赖
 bun run dev              # 同时起前后端
-bun run db:generate      # 生成 Prisma Client
-bun run db:migrate       # 建表/改表（开发期）
-bun run db:seed          # 预置账号
+bun run db:generate      # 由 schema 生成迁移 SQL（改表后跑，产物要入库）
+bun run db:migrate       # 建库 / 补迁移（服务启动时也会自动跑一次）
+bun run db:seed          # 预置账号：bun run db:seed -- -u <用户> -p <密码>
+bun run db:studio        # 浏览库内容
 bun run test:e2e         # 跑 Playwright 端到端测试
 bun run test:e2e:ui      # 可视化 UI 模式
 bun run demo:all         # 建演示账号与基线数据 → 录制四段演示 → 转码 GIF/MP4
@@ -56,13 +63,15 @@ bun run demo:convert     # 只转码
 bun run demo:seed        # 只重建演示账号与基线数据
 ```
 
-需在 `server/` 目录下执行 Prisma 命令（Bun 隔离安装，依赖在各 workspace 内）。
+需在 `server/` 目录下执行 drizzle 命令（Bun 隔离安装，依赖在各 workspace 内；`drizzle.config.ts` 的路径基于 cwd）。日常开发不必手动跑 `db:migrate`——服务启动时会自动补迁移。
 
 ## 环境变量
 
 - 只在 `server/.env`，不入库。`.env.example` 提交。
 - Bun 运行时自动从 cwd（`server/`）加载 `.env`。
-- Prisma CLI 不自动加载，由 `prisma.config.ts` 里的 dotenv 显式读取 `server/.env`。
+- drizzle-kit 不保证自动加载，由 `drizzle.config.ts` 里的 dotenv 显式读取 `server/.env`。
+- `SQLITE_PATH`：库文件路径，留空则用默认值 `server/data/app.sqlite`；部署挂载卷时改到卷内路径。
+- `ADMIN_USERNAME`：数据备份的唯一管理员。**留空即无人有权限，`/api/admin/*` 一律 403。**
 
 ## 开发顺序
 
@@ -80,7 +89,9 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx、PDF 共同读取，禁止任何一处硬编码。
 - **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
-- **限流**：计数落 `rate_limits` 表（`server/src/rate-limit.ts`），用数据库而非进程内 Map，是为了多实例部署时共享同一份计数。登录按 IP（15 分钟 10 次）、注册按 IP（1 小时 2 次）、导入按用户（1 分钟 2 次）、导出按用户（1 分钟 5 次），另有 `/api/*` 按 IP 每分钟 600 次的宽松兜底。
+- **限流**：计数落 `RateLimit` 表（`server/src/rate-limit.ts`），加一是 Drizzle 的 `onConflictDoUpdate + returning`。单机自部署只有一个进程，落库不是为了多实例共享，而是为了重启不丢当前窗口的计数。登录按 IP（15 分钟 10 次）、注册按 IP（1 小时 2 次）、导入按用户（1 分钟 2 次）、导出按用户（1 分钟 5 次）、备份三接口按用户（1 分钟 5 次），另有 `/api/*` 按 IP 每分钟 600 次的宽松兜底。
+- **SQLite 三条硬约定**（都在 `server/src/db.ts`，全是实测踩出来的）：开库必须设 `PRAGMA foreign_keys = ON`，否则级联删除静默失效（删简历时照片与版本不跟着删）；原生 `sql` 模板里**不能绑 `Date`**，`bun:sqlite` 不接受它、且比较会静默失效——时间条件一律传毫秒数（类型化 API 传 `Date` 没问题）；`updatedAt` 带 `$onUpdate`，所以「把 `lastArchivedAt` 对齐到 `updatedAt`」必须走原生 SQL，否则草稿永远显示「未存档」。
+- **单实例**：SQLite 单写者，不能横向扩多实例，多个进程写同一个文件会直接变成 500。单机自部署正是这套方案的前提，不是缺陷。
 - **安全响应头与 CSRF**：helmet 挂在 `server/src/index.ts`；CSRF 在主防线 `SameSite=Lax` 之外再加一层同源 `Origin` 校验（`server/src/csrf.ts`）。开发期 Vite 代理必须开 `xfwd`，否则改写后的 Host 与浏览器 Origin 对不上会被误杀。
 - **e2e 与限流**：限流用的是生产级严格阈值，用例开始前要清空计数表——`e2e/db.ts` 的 `clearRateLimits()`（`loginAsDefaultUser` 已内置），否则跑测试自己就会撞 429。
 
@@ -130,7 +141,9 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **只写端到端**：走真实浏览器 + 真实后端，不写接口级（`request`）测试；断言聚焦用户可见行为。
 - **一个用例只讲一件事，避免重复**：同一行为的多种路径用循环或串行步骤合进一个用例，不拆成多个。
 - **复用系统 Chrome**：配置用 `channel: 'chrome'`，不下载 Playwright 自带 Chromium。变更运行机器时若 Chrome 非默认路径，需调整。
-- 配置项 `reuseExistingServer: true`、`webServer.command: 'bun run dev'`：若 dev 已起则复用，否则自动拉起前后端。
+- **测试起自己的一套前后端**：`e2e/env.ts` 把 `SQLITE_PATH` 钉到 `e2e/.db/e2e.sqlite`，端口用 5200（前端）/ 3100（后端），`webServer.command` 会把这两组环境变量注入 `bun run dev`，并且 `reuseExistingServer: false`。**不复用已在跑的 dev**——那套连的是主库，复用就等于测试打到你自己的数据上；这样也就能边跑测试边开着 dev。
+- **测试脚本不能 import `bun:sqlite`**：Playwright 的 globalSetup 与 worker 跑在 **Node** 里（`bun run test:e2e` 只是用 bun 起脚本，真正的 `playwright test` 由 shebang 交给 node 执行）。所以 `e2e/db.ts` 改用 Node 内置的 `node:sqlite` 读写同一个库文件，表名与列名对齐 `server/src/schema.ts`。
+- **测试里的管理员是 `e2e-tester`**：`playwright.config.ts` 的 webServer 注入 `ADMIN_USERNAME=e2e-tester`，否则备份相关用例根本没法跑。
 - **必须用专用测试账号**：默认 `e2e-tester` / `e2e-tester`，由 `e2e/global-setup.ts` 在跑测试前自动创建（可用 `E2E_USERNAME` / `E2E_PASSWORD` 覆盖）。用例的 `beforeEach` 会清空该账号的全部简历，**绝不能把账号指向真实用户**，否则一次 e2e 就会删掉真数据。
 - 断言 shadcn 的 `CardTitle` 时**勿用** `getByRole('heading')`：shadcn 渲染成 `div`，应改用 `getByText(...)`。
 - 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「返回编辑」。
@@ -143,7 +156,9 @@ bun run demo:seed        # 只重建演示账号与基线数据
 
 对外演示用：把关键功能片段录成 GIF / MP4。四个片段——核心编辑流、草稿自动保存 + 照片上传、导入简历（真实大模型）、版本存档/恢复 + 导出。
 
-- **与 e2e 完全隔离**：`demo/playwright.config.ts` 的 `testDir` 是 `demo/scripts`，根配置是 `./e2e`，所以 `bun run test:e2e` 天然看不到演示脚本，根配置不需要改。产物落 `demo/output/`、免登录状态落 `demo/.auth/`，均已 gitignore。**只有源码入库。**
+- **与 e2e 完全隔离**：`demo/playwright.config.ts` 的 `testDir` 是 `demo/scripts`，根配置是 `./e2e`，所以 `bun run test:e2e` 天然看不到演示脚本，根配置不需要改。产物落 `demo/output/`、免登录状态落 `demo/.auth/`、库文件落 `demo/.db/`，均已 gitignore。**只有源码入库。**
+- **录制也起自己的一套前后端**：`scripts/constants.ts` 把 `SQLITE_PATH` **覆盖**成 `demo/.db/demo.sqlite` 并导出端口（前端 5300 / 后端 3200），`webServer` 注入这些环境变量且 `reuseExistingServer: false`——复用已在跑的 dev 会连回主库，而录制会反复删改数据。这个副作用写在 constants.ts 里，是为了让 webServer 子进程也继承到同一个库路径。
+- **`seed-demo.ts` 用 `node:sqlite` + 原生 SQL**：它同时跑在 `bun run demo:seed`（Bun）与 Playwright globalSetup（Node）两条路径上，`bun:sqlite` 在 Node 下 import 不了。开头还会借 `bun run db:migrate` 补一次表结构（单独跑 seed 时库里可能还什么都没有）。JSON 列要自己 `JSON.stringify`，日期列存毫秒数。
 - **一次性依赖**：`bunx playwright install ffmpeg`（录视频必需）+ `brew install ffmpeg gifski`（转码用）。Playwright 自带的那份 ffmpeg 是给 screencast 编 vp8 的精简构建，**缺 libx264，不能拿它转 MP4**。`seed-demo.ts` 开头会检测它是否已装，缺失直接报错并给出命令。
 - **录制走 `page.screencast`，不要配 `use.video`**：`use.video` 从 context 建好就开始录，准备步骤与开场白屏都会进视频；且它给每个动作加的展示高亮会在录制时引入明显延迟——实测 `mouse.up` 一次就要 600ms，同样内容录出来 **62s vs 18s**。`startClip` / `stopClip` 见 `demo/scripts/demo-utils.ts`，`fixtures.ts` 的 auto fixture 会在用例失败时兜底停止，保证视频落盘。
 - **必须用专用 `demo` 账号**（`demo/scripts/constants.ts`），绝不能指向 `e2e-tester` 或真实账号：`seed-demo.ts` 会删掉该账号下的全部简历（照片与版本随外键级联）。用户名硬编码常量 + 黑名单断言，不从 argv 读。同理，重建简历会级联删掉该账号的 photos/versions，与产品「照片只增不删」的约定冲突——**只限 demo 账号**。
@@ -157,22 +172,35 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - 证件照优先用 `demo/assets/photo.jpg`（放真实照片观感明显更好），没有则由 `demo/scripts/photo.ts` 用 canvas 画一张占位图。
 - 逐条实现的取舍、四个片段的完整编排与排障记录见 `demo-recording-plan.md`；改这块时两处一起更新。
 
+## 数据备份（管理员）
+
+整个应用的数据就是一个 `.sqlite` 文件，所以备份功能就是把这份文件搬进搬出。实现集中在 `server/src/backup.ts` + `server/src/routes/admin.ts`，前端在 `/admin`。
+
+- **只有 `ADMIN_USERNAME` 指定的账号能用**：路由上是 `requireAuth` + `requireAdmin`，前端还有 `RequireAdmin` 守卫、列表页按 `isAdmin` 决定是否渲染入口。**未配置该变量时视为没人有权限**，接口一律 403——宁可功能不可用，也不默认把「整库替换」的口子开着。管理员是每次请求现查用户名，改 `.env` 重启即生效，不需要迁移。
+- **导出走 `VACUUM INTO`**：SQLite 官方推荐的备份方式，产出一致快照，且不像 `VACUUM` 那样需要写锁，正在写入时也能安全取一份。**不要**改成直接拷 `.sqlite` 文件——WAL 里可能还压着没落盘的事务。
+- **导入是整库覆盖，且不换库文件**：`ATTACH` 上传的文件，在一个事务里清空六张表再整表搬过来，提交前跑 `PRAGMA foreign_key_check`。踩过的坑：先试的是「断开连接 → 覆盖文件 → 重连」，在 Bun 下走不通——drizzle 会缓存 prepared statement，而 `sqlite3_close_v2` 在还有未 finalize 的语句时并不会真正关闭连接，旧句柄继续握着文件锁，重连报 `SQLITE_BUSY`。SQL 级还原顺带还拿到了原子性：失败即回滚，库不会停在半截状态。
+- **搬运期间必须关掉外键**：`Resume.photoId` 与 `Photo.resumeId` 互相引用，排不出让外键在每一步都成立的插入顺序。注意 `PRAGMA foreign_keys` 在事务里会被忽略，必须在 `BEGIN` 之前设置。
+- **覆盖前一定留后路**：先把当前库另存为 `<库文件>.bak-<时间戳>`，误操作可以拿它还原（当普通备份文件导入即可）。
+- **跨版本的备份直接拒绝**：校验时比对上传文件与当前库的 `__drizzle_migrations` 记录，不一致就 400 并说明原因——搬进来只会让后续查询报错。
+- **导入后要求重新登录**：`Session` 表被一起还原，当前会话可能已经失效，前端拿到成功响应后直接回登录页。
+- 上传走二进制体（`Content-Type: application/octet-stream`），这两个 POST 接口单独挂 `express.raw`（200mb 上限），因为全局 `express.json` 只有 2mb。
+
 ## 部署（Railway）
 
-单服务部署：Express 一个进程同时提供 `/api` 接口与前端构建产物（`client/dist`），前后端同源。因此**不涉及 CORS，session cookie 配置也不需要改**。
+单服务部署：Express 一个进程同时提供 `/api` 接口与前端构建产物（`client/dist`），前后端同源。因此**不涉及 CORS，session cookie 配置也不需要改**。跑在**单实例**上——SQLite 单写者，不要开多个副本，多个进程写同一个文件会直接变成 500。
 
 - **静态托管仅在生产生效**（`NODE_ENV=production`）：`express.static` + SPA fallback。开发期前端仍由 Vite dev server 提供，访问 `:3000` 不会看到过期构建。
 - **SPA fallback 只对无扩展名路径生效**：`/resumes/:id/edit` 这类深链刷新要回 `index.html`；但缺失的 `/assets/*.js` 必须保持 404，回 HTML 会让浏览器按 JS 解析报错。`/api` 的 404 也不能被吞掉。
 - **`app.set('trust proxy', 1)` 仅生产启用**：平台在边缘终止 TLS，不信任代理时 `req.secure` 恒为 false，`secure` cookie 不下发，表现为「登录成功却立刻掉线」。本地验证时需带 `X-Forwarded-Proto: https` 才会下发 cookie。
 - **部署配置在 Railway 面板，不放仓库**：Railway 的 Config as Code（`railway.toml` / `railway.json`）已废弃，**新服务无法启用**，只有旧服务仍会读取，且其优先级高于面板设置。因此不要提交这类文件，否则会静默压掉面板里的配置。面板路径：服务 → Settings → Build / Deploy。
-- **面板需要设置**：Build Command 为 `bun run db:generate && bun run build`；Pre-deploy Command 为 `bun run db:migrate:deploy`（迁移失败则部署中止，旧版本继续服务）；Start Command 为 `bun run start`；Healthcheck Path 为 `/api/health`。
+- **面板需要设置**：Build Command 为 `bun run build`；Start Command 为 `bun run start`；Healthcheck Path 为 `/api/health`。**不再需要 Pre-deploy Command**：迁移改由服务启动时自动执行（`server/src/db.ts` 载入即跑 `migrate()`），也不再需要 Postgres 服务。
+- **必须挂 Volume 并把 `SQLITE_PATH` 指过去**：库文件默认落在 `server/data/app.sqlite`，而容器文件系统是临时的——**不挂持久卷的话每次重新部署数据全丢**。挂上卷后在面板设 `SQLITE_PATH=/data/app.sqlite`（目录由 `db.ts` 启动时 `mkdirSync` 创建）。
 - **Start Command 必须显式指定**：Railpack 会自动把 Vite 产物识别成纯静态站点并改用 Caddy 托管，那样 Express 根本不启动、接口全挂。显式指定才能关掉该行为。
-- **环境变量**（面板服务变量）：`DATABASE_URL`（引用 Postgres 服务的 `${{Postgres.DATABASE_URL}}`）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`NODE_ENV=production`。`PORT` 由平台注入。
-- **`prisma` 与 `dotenv` 放在 `dependencies`（而非 devDependencies）**：`prisma.config.ts` 顶层 import 了 `dotenv`，且 `prisma migrate deploy` 要在 pre-deploy 阶段的应用镜像里可用。
-- **Prisma Client 生成到源码目录**（`server/src/generated/`，见 `schema.prisma` 的 generator `output`），不放默认的 `node_modules/.prisma`。默认位置依赖 postinstall，而平台 install 阶段拿不到 schema、且 `node_modules` 可能被重建，运行时就会报 `Cannot find module '.prisma/client/default'`。该目录已 gitignore，构建时必须先跑 `db:generate`。引用点：`server/src/db.ts`、`server/prisma/seed.ts`、`e2e/db.ts` 三处从生成目录导入。
-- **`@prisma/client-runtime-utils` 需显式声明为 server 依赖**：生成代码运行时会 require 它，而 Bun 隔离安装不会把传递依赖提升到顶层，源码目录里的生成代码就解析不到。
+- **环境变量**（面板服务变量）：`SQLITE_PATH`（指向卷内路径）、`SESSION_SECRET`（必须跨部署固定，否则每次部署全体掉线）、`ADMIN_USERNAME`（要用备份功能就得设，且跨部署保持一致）、`NODE_ENV=production`。`PORT` 由平台注入；`LLM_*` 按需设置。
+- **迁移产物要跟着进镜像**：`server/drizzle/` 是服务启动时跑迁移的依据，必须提交进仓库、随源码进镜像，**不要**加进 `.gitignore`。
+- **不再有代码生成这一步**：Drizzle 运行时直接用 `server/src/schema.ts`，Prisma 时期那套「生成产物进镜像 / `trustedDependencies` 放行 postinstall / 显式声明 `@prisma/client-runtime-utils` / 构建前先跑 `db:generate`」的麻烦都不存在了。
 - **登录账号需手工 seed 一次**：`db:seed` 是按 username 幂等 upsert 且会更新密码，放进部署流程等于每次部署重置密码。
-- **迁移没跑的表现**：登录报 `P2021: The table public.User does not exist`，即 pre-deploy 未执行。注意 Railpack 会自动识别根 `package.json` 的 build/start 脚本，所以「部署成功、页面能打开」**不代表**迁移跑过。
+- **迁移失败的表现是启动就挂**：`db.ts` 在模块载入时跑 `migrate()`，所以迁移出错会让进程直接启动失败、健康检查不过，而不是以前那种「部署成功、页面能打开，但迁移没跑」的中间态。最常见的原因是库文件所在目录不可写、或者卷没挂上。
 - e2e 跑的是开发模式，静态托管分支不会生效，因此该套件**不覆盖**生产托管与 SPA fallback——这部分靠本地生产模式启动 + 平台实测验证。
 
 ## Git

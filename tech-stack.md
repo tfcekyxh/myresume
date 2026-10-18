@@ -17,9 +17,9 @@
 | 拖拽排序 | dnd-kit |
 | 数据层 | TanStack Query |
 | 后端 | Express + zod |
-| ORM | Prisma |
-| 数据库 | PostgreSQL 16 |
-| 鉴权 | express-session + connect-pg-simple（数据库 Session） |
+| ORM | Drizzle ORM（`drizzle-orm/bun-sqlite`） |
+| 数据库 | SQLite（单文件，库文件即全部数据） |
+| 鉴权 | express-session + 自建 SQLite Session store（表由 `server/src/schema.ts` 管） |
 | 密码哈希 | `Bun.password`（内置 argon2id） |
 | docx 导出 | `docx` 库，代码构建 |
 | PDF 导出 | `pdfkit`，服务端直接绘制并完整嵌入字体（见 [pdf-export-plan.md](./pdf-export-plan.md)） |
@@ -38,31 +38,32 @@ client: react react-dom react-router-dom tailwindcss
         lucide-react mammoth pdfjs-dist
         （另有 shadcn add 生成的 radix 组件）
 
-server: express zod express-session connect-pg-simple docx pdfkit
-        @prisma/client @prisma/adapter-pg
-        -d prisma dotenv @types/express-session @types/connect-pg-simple @types/pdfkit
+server: express zod express-session drizzle-orm docx pdfkit
+        -d drizzle-kit dotenv @types/express-session @types/pdfkit
 
 shared: zod
 ```
 
 被 Bun 取代、无需安装的依赖：`argon2`（用 `Bun.password`）、`tsx`/`ts-node`（直接跑 TS）、`nodemon`（`bun --watch`）、`vitest`（`bun test`）。
 
-注意 `dotenv` **仍然需要**：Bun 运行时能自动加载 `.env`，但 Prisma CLI 不能，必须在 `prisma.config.ts` 里显式加载。
+注意 `dotenv` **仍然需要**：Bun 运行时能自动加载 `.env`，但 drizzle-kit 不保证加载，必须在 `drizzle.config.ts` 里显式读一次。
 
-已实测的版本：Bun 1.4.2、React 19.2.8、Vite 8.3.0、TypeScript 6.0.2、Express 5.1.0、Prisma 7.10.0。
+已实测的版本：Bun 1.4.2、React 19.2.8、Vite 8.3.0、TypeScript 6.0.2、Express 5.1.0、drizzle-orm 0.45.4、drizzle-kit 0.31.11。
 
 <br />
 
 ## 数据模型
 
 ```
-users           id, username, password_hash, created_at
-session         sid, sess, expire          -- connect-pg-simple 自动创建，无需 migration
-resumes         id, user_id, title, data jsonb, photo_id, updated_at
-photos          id, resume_id, data text, created_at   -- base64，只增不改
-resume_versions id, resume_id, snapshot jsonb, photo_id, note, created_at
-rate_limits     key, window_start, count   -- 限流计数，key 形如 login:ip:1.2.3.4
+User            id text pk, username text unique, passwordHash text, createdAt
+Session         sid text pk, sess json, expire      -- 本应用自己管（原来那张是 connect-pg-simple 建的）
+Resume          id text pk, userId, title, data json, photoId, updatedAt, lastArchivedAt
+Photo           id text pk, resumeId, data text, createdAt   -- base64，只增不改
+ResumeVersion   id text pk, resumeId, snapshot json, photoId, note, createdAt
+RateLimit       key + windowStart 复合主键, count   -- 限流计数，key 形如 login:ip:1.2.3.4
 ```
+
+表名与列名沿用 Prisma 时期的写法（模型名即表名、列名保持 camelCase），因此换 ORM 不影响库文件与备份文件的格式约定。时间列统一用 `integer` 存**毫秒数**（`mode: 'timestamp_ms'`），JSON 列存 JSON 文本、由 Drizzle 负责 stringify/parse。
 
 关系为 `user 1:N resume 1:N resume_version`，`resume 1:N photo`（照片池）。
 
@@ -100,9 +101,13 @@ POST   /api/resumes/:id/export/docx
 POST   /api/resumes/:id/export/pdf
 
 POST   /api/import/parse              # 简历文本 → ResumeData（大模型解析）
+
+GET    /api/admin/backup              # 导出整库快照（.sqlite 文件）
+POST   /api/admin/backup/validate     # 校验上传的备份，返回内容摘要
+POST   /api/admin/backup/import       # 用上传的备份整体覆盖当前库
 ```
 
-路径一律带 resume id，多份简历各自独立；`/api/import/*` 是无状态解析接口，不落库、不绑定简历（覆盖表单与草稿自动保存在前端完成）。
+路径一律带 resume id，多份简历各自独立；`/api/import/*` 是无状态解析接口，不落库、不绑定简历（覆盖表单与草稿自动保存在前端完成）。`/api/admin/*` 只对 `ADMIN_USERNAME` 指定的账号开放，其余账号一律 403。
 
 <br />
 
@@ -111,8 +116,8 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 ### 鉴权
 
 - 账号来源：seed 脚本预置 + 页面自助注册。注册接口 `POST /api/auth/register`：用户名 ≥3 位、密码 ≥6 位，用户名唯一（重复返回 409），密码用 `Bun.password`（argon2id）哈希，注册成功即建立会话（自动登录）。注册表单含「确认密码」输入框，仅前端校验两次输入一致，提交时不传后端。
-- `express-session` + `connect-pg-simple`，`createTableIfMissing: true`。
-- `rolling: true` 实现滑动续期，有效期 30 天；过期清理由库内置，无需定时任务。
+- `express-session` + 自建 store（`server/src/session.ts`）：会话行落在同一个 SQLite 库的 `Session` 表上，表结构由 Drizzle 迁移管理。不引第三方 store 包，是因为库里只有一份数据文件，整库备份时会话也跟着一起走，不需要第二个存储载体。
+- `rolling: true` 实现滑动续期，有效期 30 天；过期行按 1% 概率随请求顺带清理，不引入定时任务。
 - Cookie：`httpOnly`、`sameSite: 'lax'`、生产环境 `secure`。
 - 登录写 `req.session.userId`，登出 `req.session.destroy()`，鉴权用 `requireAuth` 中间件读 `req.session.userId`。
 
@@ -122,7 +127,7 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 
 **限流**（`rate-limit.ts`）
 
-- 计数落在 `rate_limits` 表，加一由一条 `INSERT ... ON CONFLICT DO UPDATE SET count = count + 1 RETURNING count` 完成。用数据库而非进程内 Map，是为了多实例部署时各实例共享同一份计数——进程内 Map 在 N 个实例下等于阈值被放大 N 倍。
+- 计数落在 `RateLimit` 表，加一由一条 UPSERT（`onConflictDoUpdate` + `returning`）完成。单机自部署只有一个进程，落库不是为了多实例共享，而是为了重启不丢当前窗口的计数，并能顺手做过期清理。
 - 固定窗口，窗口起点按 `windowMs` 对齐。超限返回 429 + `Retry-After`，body 与其他接口一致用 `{ error }`，前端直接展示，无需改渲染逻辑。
 - 数据库计数失败时放行并打日志，不让限流本身拖垮业务。
 - 过期行（24 小时未被碰过）由请求按 1% 概率顺带清理，不引入定时任务。
@@ -135,9 +140,11 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 | `POST /api/auth/register` | IP | 1 小时 | 2 |
 | `POST /api/import/parse` | 用户 | 1 分钟 | 2 |
 | 导出 docx / pdf（共用配额） | 用户 | 1 分钟 | 5 |
+| 备份导出 / 校验 / 导入（共用配额） | 用户 | 1 分钟 | 5 |
 
 - 维度选择的理由：登录 / 注册时还没有身份，只能按 IP；导入与导出按用户 ID，既不会因多人共用一个出口 IP 互相牵连，也能精确拦住「一个人刷爆大模型额度」。
 - `rateLimit()` 返回类型的 params 泛型必须是 `any`：写成具体的宽类型会让 Express 5 反过来用它推断路由参数，把 `/:id/export/docx` 的 `req.params.id` 撑成 `string | string[]`。
+- 原生 SQL 里的时间条件必须绑**毫秒数**，不能传 `Date` 对象：`bun:sqlite` 不接受 `Date` 参数，Drizzle 也不会替裸 `sql` 模板做转换，实测表现为「不报错但比较静默失效」（过期行一行都删不掉）。类型化 API（如 `lt(col, new Date())`）不受影响。
 
 **安全响应头**（`index.ts` 的 helmet）
 
@@ -165,6 +172,21 @@ POST   /api/import/parse              # 简历文本 → ResumeData（大模型�
 - 「恢复到此版本」= 用快照覆盖 `resumes.data` 与 `resumes.photo_id`；确认后直接覆盖，不做 diff、不新增记录。
 - 版本列表顶部固定显示一条「当前草稿（未存档）」，内容随编辑实时更新；它只可查看，不提供恢复（它本身就是当前内容）。
 - `photos` 行只增不删，被历史版本引用的照片必须保留，否则历史版本会丢图。
+- 「草稿是否未存档」的判定基准是 `Resume.lastArchivedAt`（草稿最近一次被存档时的 `updatedAt`）。存档 / 恢复后要把它对齐到当前 `updatedAt`，这一步**必须走原生 SQL**：`updatedAt` 带 `$onUpdate`，任何走 Drizzle 的 update 都会顺带刷新它（见下面的「`$onUpdate` 的陷阱」）。
+
+### 数据备份（管理员）
+
+整库就是一个 `.sqlite` 文件，所以备份功能就是把这份文件搬进搬出，实现都在 `server/src/backup.ts`。
+
+- **导出**用 `VACUUM INTO`：SQLite 官方推荐的备份方式，产出的是一致快照，而且不像 `VACUUM` 那样需要写锁——正在写入时也能安全取一份。直接拷 `.sqlite` 文件是不行的，WAL 里可能还压着没落盘的事务。
+- **导入是整库覆盖，且不换库文件**：`ATTACH` 上传的文件，在一个事务里清空六张表再整表搬过来，提交前跑 `PRAGMA foreign_key_check`，通过才 `COMMIT`。
+  - 为什么不换成「断开连接 → 覆盖文件 → 重连」：在 Bun 下走不通。drizzle 会缓存 prepared statement，而 `sqlite3_close_v2` 在还有未 finalize 的语句时并不会真正关闭连接，旧句柄继续握着文件锁，重连时报 `SQLITE_BUSY`（实测踩过）。
+  - 顺带拿到了原子性：中途失败直接 `ROLLBACK`，库不会停在半截状态。
+  - 搬运期间要关掉 `PRAGMA foreign_keys`：`Resume.photoId` 与 `Photo.resumeId` 互相引用，排不出让外键在每一步都成立的插入顺序。注意 PRAGMA 在事务里会被忽略，必须在 `BEGIN` 之前设置。
+- **导入前一定会先留后路**：先把当前库用 `VACUUM INTO` 另存为 `<库文件>.bak-<时间戳>`，误操作可以拿它还原。
+- **跨版本的备份会被拒**：校验时比对上传文件与当前库的 `__drizzle_migrations` 记录，结构不一致直接 400——搬进来会让后续查询报错，不如在这里拦住。
+- 上传走二进制体（`express.raw`，200mb 上限），因为全局的 `express.json` 只有 2mb。三个接口共用一份用户维度限流。
+- 导入成功后当前会话可能随之失效（`Session` 表也被还原了），所以前端拿到成功响应后直接回登录页。
 
 ### 样式来源
 
@@ -230,7 +252,7 @@ bun install                  # 安装依赖
 bun add <pkg>                # 添加依赖
 bun add -d <pkg>             # 添加开发依赖
 bun run dev                  # 运行脚本
-bunx prisma generate         # 调用 CLI
+bunx drizzle-kit generate    # 调用 CLI
 bun --watch server/index.ts  # 服务端开发模式
 bun run --filter '*' dev     # 跨 workspace 执行
 ```
@@ -240,58 +262,44 @@ bun run --filter '*' dev     # 跨 workspace 执行
 
 <br />
 
-## Prisma 7 配置方式
+## Drizzle + bun:sqlite 的实现约定
 
-Prisma 7 与 6 的配置模型差别很大，以下为实际采用的方式。
+**为什么不是 Prisma**（别再往回搬）：Prisma 7 的 SQLite 适配器只支持 `better-sqlite3` 与 libSQL，而 `better-sqlite3` 是 Node 原生模块，**Bun 加载不了**——Bun 自 1.3.2 起改为快速失败并提示改用 `bun:sqlite`。岔路里剩下的社区 `bun:sqlite` 适配器还停在 alpha，不适合放进核心数据路径。Drizzle 官方一级支持 `bun:sqlite`，没有原生模块、也没有代码生成步骤，故选用它。
 
-**1. 连接串不在 schema 里**
+**1. 连接**
 
-`schema.prisma` 的 datasource 只保留 provider，写 `url` 会直接报错：
-
-```prisma
-datasource db {
-  provider = "postgresql"
-}
-```
-
-**2. 连接串移到 `prisma.config.ts`**
-
-CLI（migrate / db push / studio）从配置文件读取。注意 Prisma CLI 不自动加载 `.env`，需显式引入 dotenv：
+全程只有一个连接，在 `server/src/db.ts` 里创建：
 
 ```ts
-import path from 'node:path'
-import { config } from 'dotenv'
-import { defineConfig, env } from 'prisma/config'
-
-config({ path: path.join(import.meta.dirname, '.env') })
-
-export default defineConfig({
-  schema: path.join(import.meta.dirname, 'prisma', 'schema.prisma'),
-  datasource: { url: env('DATABASE_URL') },
-  migrations: {
-    path: path.join(import.meta.dirname, 'prisma', 'migrations'),
-    seed: 'bun prisma/seed.ts',
-  },
-})
+const sqlite = new Database(SQLITE_PATH, { create: true })
+sqlite.exec('PRAGMA foreign_keys = ON')   // SQLite 默认不校验外键，级联删除全靠它
+sqlite.exec('PRAGMA journal_mode = WAL')
+sqlite.exec('PRAGMA busy_timeout = 5000')
+export const db = drizzle({ client: sqlite })
 ```
 
-**3. 运行时必须显式传驱动适配器**
+三条 PRAGMA 都不能省：少了 `foreign_keys` 级联删除会静默失效（删简历时照片与版本不会跟着删），少了 WAL 读写互相阻塞，少了 `busy_timeout` 会偶发 `SQLITE_BUSY`。
 
-PrismaClient 不再自己读 `DATABASE_URL`，否则运行时报错：
+**2. 迁移**
+
+- `server/src/schema.ts` 定义表，`server/drizzle.config.ts` 指向它，`drizzle-kit generate` 把 SQL 产出到 `server/drizzle/`——**产物要入库**，和以前的 Prisma migrations 一样。
+- 迁移在服务启动时自动执行（`db.ts` 里调 `migrate()`）。单机单进程不存在抢迁移的问题，所以不需要 pre-deploy 阶段：换台机器把库文件拷过去再启动，结构会自动补齐。
+- `drizzle.config.ts` 里 `schema` / `out` 必须给**相对路径**：给绝对路径时 drizzle-kit 会拼出 `.//Users/...` 这种畸形路径，第二次 generate 会读不到 meta 快照。该文件也拿不到 `import.meta.dirname`（是 undefined），路径一律基于 cwd，所以命令都从 `server/` 目录执行（根目录的 `db:*` 脚本走 `bun run --filter server`，cwd 天然就是它）。
+- 迁移前要保证目录存在：SQLite 不会替你建目录，`db.ts` 里先 `mkdirSync`。
+
+**3. 循环外键与类型推断**
+
+`Resume.photoId` 与 `Photo.resumeId` 互相引用，指向后声明那一侧的 `references()` 回调必须显式写上返回类型 `AnySQLiteColumn`，否则 TypeScript 会因循环推断报 TS7022。
+
+**4. `$onUpdate` 的陷阱**（与 Prisma 的 `@updatedAt` 是同一个）
+
+`Resume.updatedAt` 带 `$onUpdate`，任何走 Drizzle 的 `update` 都会顺带把它刷新成当前时间。所以「把 `lastArchivedAt` 对齐到当前 `updatedAt`」这个动作必须走原生 SQL：
 
 ```ts
-import { PrismaClient } from './generated/prisma'
-import { PrismaPg } from '@prisma/adapter-pg'
-
-const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! })
-export const prisma = new PrismaClient({ adapter })
+db.run(sql`UPDATE "Resume" SET "lastArchivedAt" = "updatedAt" WHERE "id" = ${resumeId}`)
 ```
 
-因此额外依赖 `@prisma/adapter-pg`。
-
-**4. 版本必须对齐**
-
-CLI 与 client 版本不一致会出问题。当前锁定 `prisma@7.10.0` 与 `@prisma/client@7.10.0`（`bun add prisma` 默认会拉 8.0.0-rc 预发布版，需显式指定版本）。
+否则基准永远比 `updatedAt` 早一点点，草稿会永远显示「未存档」。
 
 <br />
 
@@ -300,26 +308,23 @@ CLI 与 client 版本不一致会出问题。当前锁定 `prisma@7.10.0` 与 `@
 `.env` 放在 `server/`，因为只有服务端需要它。客户端若需环境变量，用 Vite 自己的 `.env` 与 `VITE_` 前缀。
 
 - Bun 运行时从 cwd（`server/`）自动加载 `.env`
-- Prisma CLI 由 `prisma.config.ts` 中的 dotenv 显式加载
+- drizzle-kit 由 `drizzle.config.ts` 中的 dotenv 显式加载，且必须在 `server/` 目录下执行
 - `.env` 已被 `.gitignore` 覆盖，`.env.example` 提交进仓库
+- `SQLITE_PATH`：库文件路径，留空则用默认值 `server/data/app.sqlite`。单机部署挂载卷时改到卷内路径（如 `/data/app.sqlite`）
+- `ADMIN_USERNAME`：数据备份页与 `/api/admin/*` 的唯一管理员用户名。**留空表示没人有权限，接口一律 403**——宁可功能不可用，也不默认把这个「整库替换」的口子开着
 - `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`：简历导入解析用的大模型（OpenAI 兼容接口），默认智谱 GLM-4-Flash；`LLM_API_KEY` 留空时导入功能返回 503
 
 <br />
 
-## Prisma + Bun 注意点
+## SQLite / Bun 注意点
 
-**Prisma Client 生成到源码目录**（`schema.prisma` 的 generator 设置 `output = "../src/generated/prisma"`），不放到默认的 `node_modules/.prisma`：
+**单写者、单实例**：SQLite 允许并发读，写操作排队，配合 `busy_timeout` 足够单机自部署使用；但**不能横向扩多实例**——多个进程写同一个文件，锁竞争会直接变成 500。单机自部署本来就是这套方案的前提。
 
-- 默认位置依赖 `@prisma/client` 的 postinstall 生成；Bun 默认不执行依赖的 postinstall（靠根 `package.json` 的 `trustedDependencies` 才跑），且部署平台的 install 阶段往往只放 `package.json` 与锁文件、拿不到 schema，运行时就会报 `Cannot find module '.prisma/client/default'`。
-- 生成到源码目录则产物随代码一起进镜像，不依赖 postinstall 时机、也不怕 `node_modules` 被重建。
+**原生 SQL 的参数只能绑基本类型**：`bun:sqlite` 接受数字、字符串、bigint、Buffer 与 null，**不接受 `Date` 对象**，而裸 `sql` 模板不会替你转换——表现是「不报错但比较静默失效」。时间条件一律传毫秒数（见 `rate-limit.ts`、`session.ts` 的过期清理）。走 Drizzle 的类型化 API（`eq` / `lt` 等）时传 `Date` 是安全的，由列类型负责往返转换。
 
-由此的引用方式：
+**测试与演示脚本不能 import `bun:sqlite`**：Playwright 的 globalSetup 与 worker 跑在 **Node** 里（`bun run test:e2e` 只是用 bun 起脚本，真正的 `playwright test` 由 shebang 交给 node 执行）。所以 `e2e/db.ts` 与 `demo/scripts/seed-demo.ts` 改用 Node 内置的 `node:sqlite` 直接读写同一个库文件——它在 Bun 与 Node 下都可用，正好覆盖这两处的双运行时场景。
 
-- 业务代码从生成目录导入：`import { PrismaClient } from './generated/prisma'`（见 `server/src/db.ts`、`server/prisma/seed.ts`、`e2e/db.ts`）。
-- 生成目录 `server/src/generated/` 已加入 `.gitignore`；它由 `db:generate` 产出，构建时先跑它再构建。
-- 生成代码运行时会 require `@prisma/client-runtime-utils`（Bun 隔离安装不会把它提升到顶层），因此要在 `server/package.json` 显式声明该依赖。
-
-Bun 采用隔离安装，依赖装在各自 workspace 的 `node_modules`，因此 Prisma 命令要在 `server/` 目录下执行（或用根目录的 `db:*` 脚本转发）。
+**Prisma 时期的那一堆坑随它一起消失了**：不需要 `output` 到源码目录、不需要 `trustedDependencies` 放行 postinstall、不需要在构建前先跑 `db:generate`、也不需要显式声明 `@prisma/client-runtime-utils`。
 
 <br />
 
@@ -330,9 +335,13 @@ Vite dev server（5173）与 Express（3000）跨源会导致 Cookie 无法携�
 ```ts
 // vite.config.ts
 server: {
-  proxy: { '/api': { target: 'http://localhost:3000', changeOrigin: true } }
+  proxy: { '/api': { target: `http://localhost:${apiPort}`, changeOrigin: true, xfwd: true } }
 }
 ```
+
+`xfwd` 不能省：它透传原始主机名，否则 changeOrigin 改写后的 Host 与浏览器的 Origin 对不上，会被后端的 CSRF 同源校验拒掉。
+
+前端端口与后端端口都可由环境变量覆盖（`VITE_PORT` / `API_PORT`）：**e2e 用 5200 + 3100，演示录制用 5300 + 3200**，各自起一套前后端。这样跑测试或录制时不必停掉手上的 dev；也因此两边的 Playwright 都设了 `reuseExistingServer: false`——复用已在跑的 dev 等于连回主库，隔离就白做了。
 
 <br />
 

@@ -1,7 +1,7 @@
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { createSnapshot, stamp } from './backup'
 import { SQLITE_PATH } from './env'
-import { backupMailRecipients, mailConfigured, sendMail } from './mail'
+import { mailConfigured, mailRecipients, sendMail } from './mail'
 
 /**
  * 每月把整库快照发一封邮件。
@@ -91,7 +91,7 @@ async function sendSnapshot() {
         '',
         '这封邮件由服务每月自动发送，同一个月只发一次。',
       ].join('\n'),
-      attachment: { filename, content },
+      attachments: [{ filename, content }],
     })
 
     return { filename, month, bytes: content.byteLength }
@@ -155,7 +155,7 @@ async function checkAndSend() {
  * 两个定时器都 unref：不拖住进程退出，本地开发 Ctrl+C 也不会被它们挡住。
  */
 export function startBackupScheduler() {
-  if (!mailConfigured() || backupMailRecipients().length === 0) {
+  if (!mailConfigured()) {
     console.log('[backup-mail] 未配置 MAIL_API_KEY 或收件人，每月自动备份邮件功能关闭')
     return
   }
@@ -166,5 +166,5 @@ export function startBackupScheduler() {
   setTimeout(tick, STARTUP_DELAY_MS).unref()
   setInterval(tick, TICK_MS).unref()
 
-  console.log(`[backup-mail] 每月自动备份已开启，收件人：${backupMailRecipients().join('、')}`)
+  console.log(`[backup-mail] 每月自动备份已开启，收件人：${mailRecipients().join('、')}`)
 }

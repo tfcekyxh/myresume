@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import { Eye, RotateCcw, Trash2 } from 'lucide-react'
+import { Eye, Mail, RotateCcw, Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { ResumeReadonly } from '@/components/resume-readonly'
 import { ResumeTabs } from '@/components/resume-tabs'
 import { useResume } from '@/components/resume-gate'
@@ -15,9 +16,17 @@ import {
 } from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { ApiError } from '@/lib/api'
+import { useCurrentUser } from '@/lib/auth'
 import { usePhoto } from '@/lib/photo'
 import { useResumeDetail, type ResumeRecord } from '@/lib/resume'
-import { useDeleteVersion, useRestoreVersion, useVersion, useVersions } from '@/lib/versions'
+import {
+  useDeleteVersion,
+  useEmailVersion,
+  useRestoreVersion,
+  useVersion,
+  useVersions,
+} from '@/lib/versions'
 
 function formatTime(iso: string) {
   return new Date(iso).toLocaleString('zh-CN', {
@@ -90,10 +99,16 @@ export function VersionsPage() {
   const { data: versions, isPending } = useVersions(resumeId)
   const restore = useRestoreVersion(resumeId)
   const remove = useDeleteVersion(resumeId)
+  const email = useEmailVersion(resumeId)
+
+  // 「发送到邮箱」是管理员能力，服务端也按 ADMIN_USERNAME 拦，这里只决定按钮渲染与否
+  const { data: user } = useCurrentUser()
+  const isAdmin = user?.isAdmin ?? false
 
   const [viewing, setViewing] = useState<Viewing>(null)
   const [restoringId, setRestoringId] = useState<string | null>(null)
   const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [emailingId, setEmailingId] = useState<string | null>(null)
 
   // 草稿最后保存时间晚于最近一次存档时间，说明存档后又有改动
   const draftDirty = hasUnsavedChanges(resume)
@@ -110,6 +125,19 @@ export function VersionsPage() {
     if (!deletingId) return
     await remove.mutateAsync(deletingId)
     setDeletingId(null)
+  }
+
+  async function handleEmail(versionId: string) {
+    setEmailingId(versionId)
+
+    try {
+      const result = await email.mutateAsync(versionId)
+      toast.success(`已发送到 ${result.to.join('、')}`)
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : '发送失败，请稍后重试')
+    } finally {
+      setEmailingId(null)
+    }
   }
 
   return (
@@ -160,7 +188,7 @@ export function VersionsPage() {
               </p>
             </div>
 
-            <div className="flex shrink-0 gap-2">
+            <div className="flex shrink-0 flex-wrap justify-end gap-2">
               <Button
                 variant="outline"
                 size="sm"
@@ -168,6 +196,17 @@ export function VersionsPage() {
               >
                 <Eye /> 查看
               </Button>
+              {/* 只对管理员显示；按钮变多后窄屏会折成两行，故上面允许换行 */}
+              {isAdmin && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleEmail(version.id)}
+                  disabled={emailingId === version.id}
+                >
+                  <Mail /> {emailingId === version.id ? '发送中…' : '发送到邮箱'}
+                </Button>
+              )}
               <Button variant="outline" size="sm" onClick={() => setRestoringId(version.id)}>
                 <RotateCcw /> 恢复
               </Button>

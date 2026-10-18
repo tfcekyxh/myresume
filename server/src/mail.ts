@@ -1,4 +1,4 @@
-import { BACKUP_EMAIL_TO, MAIL_API_KEY, MAIL_API_URL, MAIL_FROM } from './env'
+import { MAIL_API_KEY, MAIL_API_URL, MAIL_FROM, MAIL_TO } from './env'
 
 /**
  * 发信走第三方邮件 API 的 HTTP 接口，不走 SMTP。
@@ -11,7 +11,7 @@ import { BACKUP_EMAIL_TO, MAIL_API_KEY, MAIL_API_URL, MAIL_FROM } from './env'
  * 换成别的兼容服务商时改 MAIL_API_URL 即可。
  */
 
-/** 单次请求的超时；备份附件可能要传一会儿，给得比一般接口宽。 */
+/** 单次请求的超时；附件可能要传一会儿，给得比一般接口宽。 */
 const TIMEOUT_MS = 120_000
 
 export type MailAttachment = {
@@ -19,20 +19,20 @@ export type MailAttachment = {
   content: Buffer
 }
 
-/** 是否配好了发信通道；没配时整个「每月备份邮件」功能关闭。 */
+/** 是否配好了发信通道；没配时「每月备份邮件」与「简历发送到邮箱」都关闭。 */
 export function mailConfigured(): boolean {
-  return MAIL_API_KEY !== ''
+  return MAIL_API_KEY !== '' && MAIL_TO.length > 0
 }
 
-export function backupMailRecipients(): string[] {
-  return BACKUP_EMAIL_TO
+export function mailRecipients(): string[] {
+  return MAIL_TO
 }
 
 /** 发一封带附件的邮件，非 2xx 直接抛错，由调用方决定是否重试。 */
 export async function sendMail(input: {
   subject: string
   text: string
-  attachment: MailAttachment
+  attachments: MailAttachment[]
 }): Promise<void> {
   const response = await fetch(MAIL_API_URL, {
     method: 'POST',
@@ -43,15 +43,13 @@ export async function sendMail(input: {
     signal: AbortSignal.timeout(TIMEOUT_MS),
     body: JSON.stringify({
       from: MAIL_FROM,
-      to: backupMailRecipients(),
+      to: mailRecipients(),
       subject: input.subject,
       text: input.text,
-      attachments: [
-        {
-          filename: input.attachment.filename,
-          content: input.attachment.content.toString('base64'),
-        },
-      ],
+      attachments: input.attachments.map((attachment) => ({
+        filename: attachment.filename,
+        content: attachment.content.toString('base64'),
+      })),
     }),
   })
 

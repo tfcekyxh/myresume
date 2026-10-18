@@ -188,15 +188,28 @@ POST   /api/admin/backup/import       # 用上传的备份整体覆盖当前库
 - 上传走二进制体（`express.raw`，200mb 上限），因为全局的 `express.json` 只有 2mb。三个接口共用一份用户维度限流。
 - 导入成功后当前会话可能随之失效（`Session` 表也被还原了），所以前端拿到成功响应后直接回登录页。
 
-### 每月自动备份邮件
+### 邮件发送通道（每月备份 + 版本发送到邮箱）
 
-实现拆两处：`server/src/backup-scheduler.ts`（何时发、状态记账）与 `server/src/mail.ts`（怎么发）。快照本身复用上面那套 `VACUUM INTO`。
+实现拆两处：`server/src/mail.ts`（怎么发）与 `server/src/backup-scheduler.ts`（何时发备份）。两个功能共用同一条发信通道与同一份收件人配置 `MAIL_TO`。
+
+**发信本身**
+
+- **走第三方邮件 API 的 HTTP 接口，不走 SMTP**：云端平台对出站 25/465 端口常有封锁，HTTPS 接口更稳。请求体按 Resend 的约定组织（`from` / `to` / `subject` / `text` / `attachments` 里 base64 的 `content`，支持多个附件），换服务商时只改 `MAIL_API_URL`。代价是发件地址通常得是服务商认可的地址——Resend 未验证自有域名时只能是 `onboarding@resend.dev`，且只能发给注册邮箱，因此 `MAIL_FROM` 必须可配。
+- **未配 `MAIL_API_KEY` 时两个功能都关**：`mailConfigured()` 是唯一开关，备份定时器空转、发送接口回 503，与 `LLM_API_KEY` 的处理方式一致，都不设为启动必需。
+
+**每月自动备份邮件**
 
 - **不做「定时到一个月后」，改成每小时自检**：部署重启、容器迁移都会把计时器清零，而月度任务一旦错过就是整整一个月的空档。现在每小时醒一次、只判断「本月是否已发」，重启、宕机、漏跑都能自动补上，同一个月也不会重复发。启动后 30 秒先检查一次，把重启期间漏掉的那次补上。
 - **已发月份记在 `<库文件>.backup-mail.json`**，与库同目录，所以部署时自然落在挂载的卷里。**刻意不建表**：新增表会改变迁移哈希，而备份导入是按迁移哈希做跨版本校验的（见上一条），那会把所有已有的导出文件判成「跨版本」而拒收。文件先写 `.tmp` 再改名，避免进程半途被杀留下半截 JSON。
-- **发信走第三方邮件 API 的 HTTP 接口，不走 SMTP**：云端平台对出站 25/465 端口常有封锁，HTTPS 接口更稳。请求体按 Resend 的约定组织（`from` / `to` / `subject` / `text` / `attachments` 里 base64 的 `content`），换服务商时只改 `MAIL_API_URL`。代价是发件地址通常得是服务商认可的地址——Resend 未验证自有域名时只能是 `onboarding@resend.dev`，且只能发给注册邮箱，因此 `MAIL_FROM` 必须可配。
 - **失败退避 6 小时重试**，错误原文（含服务商返回的报文）记进状态文件，配错 Key 时一眼能看出原因且日志压到每天 4 条。
 - 手动补发用 `bun run backup:mail`：与定时器走完全相同的代码路径，发成功后本月也不会再自动发第二封——部署后当场就能验证配置对不对，不必等一个月。
+
+**版本的「发送到邮箱」**
+
+- 接口 `POST /api/admin/resumes/:resumeId/versions/:versionId/email`，挂在 `adminRouter` 下，因此自动继承 `requireAuth` + `requireAdmin`：普通账号一律 403。前端也按 `isAdmin` 决定按钮是否渲染（`GET /api/auth/me` 已带该字段），但**服务端校验才是准的**，前端只是不显示入口。
+- 取的是**版本快照**（`ResumeVersion.snapshot` + 当时的 `photoId`），不是当前草稿——发出去的必须是那一份确定的内容。docx 的字体沿用前端探测结果（与下载导出同一套规则），PDF 仍由服务端内嵌思源黑体。
+- 一次请求现做两个文档，比普通导出重，所以单独挂一个用户维度限流（1 分钟 5 次，key 是 `resume-mail`，与 `export` 的窗口互不干扰）。
+- 邮件正文里的时间按 `Asia/Shanghai` 格式化：服务器跑在 UTC，不指定时区会差 8 小时。
 
 ### 样式来源
 
@@ -323,7 +336,7 @@ db.run(sql`UPDATE "Resume" SET "lastArchivedAt" = "updatedAt" WHERE "id" = ${res
 - `SQLITE_PATH`：库文件路径，留空则用默认值 `server/data/app.sqlite`。单机部署挂载卷时改到卷内路径（如 `/data/app.sqlite`）
 - `ADMIN_USERNAME`：数据备份页与 `/api/admin/*` 的唯一管理员用户名。**留空表示没人有权限，接口一律 403**——宁可功能不可用，也不默认把这个「整库替换」的口子开着
 - `LLM_BASE_URL` / `LLM_API_KEY` / `LLM_MODEL`：简历导入解析用的大模型（OpenAI 兼容接口），默认智谱 GLM-4-Flash；`LLM_API_KEY` 留空时导入功能返回 503
-- `MAIL_API_URL` / `MAIL_API_KEY` / `MAIL_FROM` / `BACKUP_EMAIL_TO`：每月自动备份邮件。默认走 Resend 的 HTTP 接口，`MAIL_API_KEY` 留空时该功能关闭（与 `LLM_API_KEY` 一样不设为启动必需）；收件人默认 `your-email@example.com`，可逗号分隔多个
+- `MAIL_API_URL` / `MAIL_API_KEY` / `MAIL_FROM` / `MAIL_TO`：邮件发送通道，每月自动备份邮件与版本列表的「发送到邮箱」共用。默认走 Resend 的 HTTP 接口；`MAIL_API_KEY` 与 `MAIL_TO` 任一留空都视为未配置，两处功能一起关闭（与 `LLM_API_KEY` 一样不设为启动必需）。`MAIL_TO` 是收件人，可逗号分隔多个，**源码里不给默认值**——真实邮箱只写 `.env` 与部署变量，仓库中不出现（e2e 用 `example.com` 的假地址）
 
 <br />
 

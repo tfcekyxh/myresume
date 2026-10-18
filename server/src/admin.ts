@@ -26,12 +26,12 @@ export async function currentUsername(userId: string): Promise<string | null> {
   return user?.username ?? null
 }
 
-/** 备份导出 / 导入的鉴权：只有管理员能碰，需先过 requireAuth。 */
+/** 管理员接口的鉴权：整库备份、以及版本列表的发送到邮箱，都需先过 requireAuth。 */
 export async function requireAdmin(req: Request, res: Response, next: NextFunction) {
   const username = req.session.userId ? await currentUsername(req.session.userId) : null
 
   if (!isAdminUsername(username)) {
-    res.status(403).json({ error: '只有管理员可以操作数据备份' })
+    res.status(403).json({ error: '只有管理员可以执行这个操作' })
     return
   }
 

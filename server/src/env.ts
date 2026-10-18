@@ -29,18 +29,23 @@ export const LLM_API_KEY = process.env.LLM_API_KEY ?? ''
 export const LLM_MODEL = process.env.LLM_MODEL ?? 'glm-4-flash'
 
 /**
- * 每月自动备份邮件。
+ * 邮件发送通道（每月自动备份邮件、简历版本发送到邮箱两处共用）。
  *
  * 发信走第三方邮件 API 的 HTTP 接口（默认 Resend，请求体与它兼容），
  * 不走 SMTP——云端平台对出站 25/465 端口常有封锁，HTTP 接口更稳。
- * 未配 MAIL_API_KEY 时整块功能直接关闭，与 LLM_* 一样不设为启动必需。
+ * 未配 MAIL_API_KEY 时这两处功能都直接关闭，与 LLM_* 一样不设为启动必需。
  */
 export const MAIL_API_URL = process.env.MAIL_API_URL ?? 'https://api.resend.com/emails'
 export const MAIL_API_KEY = process.env.MAIL_API_KEY ?? ''
 /** Resend 未验证域名时只能用它的测试发件地址，且只能发给注册邮箱。 */
 export const MAIL_FROM = process.env.MAIL_FROM ?? 'onboarding@resend.dev'
-/** 备份邮件的收件人，可逗号分隔多个。 */
-export const BACKUP_EMAIL_TO = (process.env.BACKUP_EMAIL_TO ?? 'your-email@example.com')
+/**
+ * 收件人，可逗号分隔多个。
+ *
+ * **刻意不给默认值**：真实邮箱只留在 `server/.env`（不入库）或部署面板的环境变量里，
+ * 仓库里不出现任何真实地址。留空时 `mailConfigured()` 判定为未配置，两处发信功能一起关闭。
+ */
+export const MAIL_TO = (process.env.MAIL_TO ?? '')
   .split(',')
   .map((address) => address.trim())
   .filter(Boolean)

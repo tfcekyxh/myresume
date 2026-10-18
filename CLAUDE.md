@@ -73,7 +73,8 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - drizzle-kit 不保证自动加载，由 `drizzle.config.ts` 里的 dotenv 显式读取 `server/.env`。
 - `SQLITE_PATH`：库文件路径，留空则用默认值 `server/data/app.sqlite`；部署挂载卷时改到卷内路径。
 - `ADMIN_USERNAME`：数据备份的唯一管理员。**留空即无人有权限，`/api/admin/*` 一律 403。**
-- `MAIL_API_URL` / `MAIL_API_KEY` / `MAIL_FROM` / `BACKUP_EMAIL_TO`：每月自动备份邮件。默认走 Resend 的 HTTP 接口；`MAIL_API_KEY` 留空时该功能关闭（不设为启动必需）。Resend 未验证自有域名时 `MAIL_FROM` 只能是 `onboarding@resend.dev`，且只能发给注册邮箱。
+- `MAIL_API_URL` / `MAIL_API_KEY` / `MAIL_FROM` / `MAIL_TO`：邮件发送通道，每月备份邮件与版本列表的「发送到邮箱」共用。默认走 Resend 的 HTTP 接口；`MAIL_API_KEY` 与 `MAIL_TO` 任一留空都视为未配置，这两处功能一起关闭（不设为启动必需）。Resend 未验证自有域名时 `MAIL_FROM` 只能是 `onboarding@resend.dev`，且只能发给注册邮箱。
+- `MAIL_TO` **刻意不给默认值**：真实邮箱只写在 `server/.env` 或部署面板的环境变量里，**源码、文档、`.env.example`、测试里一律不出现真实地址**（仓库会公开、历史还会永久留着）。测试用 `example.com` 的假地址。
 
 ## 开发顺序
 
@@ -91,7 +92,7 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **要点列表**：`points` 是嵌套在条目内的字符串数组，RHF 的路径类型推导不到，改用 `useWatch` + `setValue` 手动维护增删（因此不支持拖拽）。
 - **样式**：排版参数集中在 `shared/style-constants.ts`，前端 CSS 与后端 docx、PDF 共同读取，禁止任何一处硬编码。
 - **多简历**：`user 1:N resume 1:N resume_version`。一个人可以有多份简历（前端 / 后端 / 全栈），每份各有自己的草稿与版本记录。登录后进 `/resumes` 列表页选一份，再进 `/resumes/:resumeId/edit`、`/versions`；**resume id 从 URL 取**，刷新与分享链接都能落到同一份。接口：`GET/POST /api/resumes`、`GET/PATCH/DELETE /api/resumes/:id`。
-- **限流**：计数落 `RateLimit` 表（`server/src/rate-limit.ts`），加一是 Drizzle 的 `onConflictDoUpdate + returning`。单机自部署只有一个进程，落库不是为了多实例共享，而是为了重启不丢当前窗口的计数。登录按 IP（15 分钟 10 次）、注册按 IP（1 小时 2 次）、导入按用户（1 分钟 2 次）、导出按用户（1 分钟 5 次）、备份三接口按用户（1 分钟 5 次），另有 `/api/*` 按 IP 每分钟 600 次的宽松兜底。
+- **限流**：计数落 `RateLimit` 表（`server/src/rate-limit.ts`），加一是 Drizzle 的 `onConflictDoUpdate + returning`。单机自部署只有一个进程，落库不是为了多实例共享，而是为了重启不丢当前窗口的计数。登录按 IP（15 分钟 10 次）、注册按 IP（1 小时 2 次）、导入按用户（1 分钟 2 次）、导出按用户（1 分钟 5 次）、发送到邮箱按用户（1 分钟 5 次，key 是 `resume-mail`，与导出各自独立计数）、备份三接口按用户（1 分钟 5 次），另有 `/api/*` 按 IP 每分钟 600 次的宽松兜底。
 - **SQLite 三条硬约定**（都在 `server/src/db.ts`，全是实测踩出来的）：开库必须设 `PRAGMA foreign_keys = ON`，否则级联删除静默失效（删简历时照片与版本不跟着删）；原生 `sql` 模板里**不能绑 `Date`**，`bun:sqlite` 不接受它、且比较会静默失效——时间条件一律传毫秒数（类型化 API 传 `Date` 没问题）；`updatedAt` 带 `$onUpdate`，所以「把 `lastArchivedAt` 对齐到 `updatedAt`」必须走原生 SQL，否则草稿永远显示「未存档」。
 - **单实例**：SQLite 单写者，不能横向扩多实例，多个进程写同一个文件会直接变成 500。单机自部署正是这套方案的前提，不是缺陷。
 - **安全响应头与 CSRF**：helmet 挂在 `server/src/index.ts`；CSRF 在主防线 `SameSite=Lax` 之外再加一层同源 `Origin` 校验（`server/src/csrf.ts`）。开发期 Vite 代理必须开 `xfwd`，否则改写后的 Host 与浏览器 Origin 对不上会被误杀。
@@ -146,6 +147,7 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **测试起自己的一套前后端**：`e2e/env.ts` 把 `SQLITE_PATH` 钉到 `e2e/.db/e2e.sqlite`，端口用 5200（前端）/ 3100（后端），`webServer.command` 会把这两组环境变量注入 `bun run dev`，并且 `reuseExistingServer: false`。**不复用已在跑的 dev**——那套连的是主库，复用就等于测试打到你自己的数据上；这样也就能边跑测试边开着 dev。
 - **测试脚本不能 import `bun:sqlite`**：Playwright 的 globalSetup 与 worker 跑在 **Node** 里（`bun run test:e2e` 只是用 bun 起脚本，真正的 `playwright test` 由 shebang 交给 node 执行）。所以 `e2e/db.ts` 改用 Node 内置的 `node:sqlite` 读写同一个库文件，表名与列名对齐 `server/src/schema.ts`。
 - **测试里的管理员是 `e2e-tester`**：`playwright.config.ts` 的 webServer 注入 `ADMIN_USERNAME=e2e-tester`，否则备份相关用例根本没法跑。
+- **假邮件服务**：涉及发信的功能（版本「发送到邮箱」）需要被测服务配 `MAIL_API_KEY` 才走真实链路，否则直接 503。`playwright.config.ts` 的 webServer 是数组，除前后端外另起 `e2e/fake-mail-server.ts`（端口 5400），并把 `MAIL_API_URL` / `MAIL_API_KEY` 指到它——全程不碰真实邮件 API，用例通过 `GET /mails` 取回收件（见 `e2e/mail.ts`）。**副作用**：配了 Key 后「每月备份邮件」定时器也会启用，启动约 30 秒后往同一地址发一封整库备份，所以断言一律按 subject 过滤，不要用「收到几封」这种总数断言。
 - **必须用专用测试账号**：默认 `e2e-tester` / `e2e-tester`，由 `e2e/global-setup.ts` 在跑测试前自动创建（可用 `E2E_USERNAME` / `E2E_PASSWORD` 覆盖）。用例的 `beforeEach` 会清空该账号的全部简历，**绝不能把账号指向真实用户**，否则一次 e2e 就会删掉真数据。
 - 断言 shadcn 的 `CardTitle` 时**勿用** `getByRole('heading')`：shadcn 渲染成 `div`，应改用 `getByText(...)`。
 - 关键选择器：`#username`、`#password`、提交按钮文案「登录」/「登录中…」、登出按钮「登出」、链接文案「版本记录」「返回编辑」。
@@ -186,7 +188,8 @@ bun run demo:seed        # 只重建演示账号与基线数据
 - **跨版本的备份直接拒绝**：校验时比对上传文件与当前库的 `__drizzle_migrations` 记录，不一致就 400 并说明原因——搬进来只会让后续查询报错。
 - **导入后要求重新登录**：`Session` 表被一起还原，当前会话可能已经失效，前端拿到成功响应后直接回登录页。
 - 上传走二进制体（`Content-Type: application/octet-stream`），这两个 POST 接口单独挂 `express.raw`（200mb 上限），因为全局 `express.json` 只有 2mb。
-- **每月自动发一封备份邮件**（`server/src/backup-scheduler.ts` + `server/src/mail.ts`）：定时器每小时醒一次，只判断「本月是否已发」，没发过就取一份快照当附件发到 `BACKUP_EMAIL_TO`（默认 `your-email@example.com`）。**不要改成「定时到一个月后」**——部署重启、容器迁移会把计时器清零，月度任务错过就是整月空档；现在重启/宕机/漏跑都能自动补上，同月也不会重复发。已发月份记在 `<库文件>.backup-mail.json`（与库同目录，落在挂载卷里），**刻意不建表**：新增表会改变迁移哈希，而备份导入按迁移哈希做跨版本校验，那会把已有导出文件全判成「跨版本」而拒收。
+- **每月自动发一封备份邮件**（`server/src/backup-scheduler.ts` + `server/src/mail.ts`）：定时器每小时醒一次，只判断「本月是否已发」，没发过就取一份快照当附件发到 `MAIL_TO`（收件人只在 `.env` 里配，仓库里不写真实地址）。**不要改成「定时到一个月后」**——部署重启、容器迁移会把计时器清零，月度任务错过就是整月空档；现在重启/宕机/漏跑都能自动补上，同月也不会重复发。已发月份记在 `<库文件>.backup-mail.json`（与库同目录，落在挂载卷里），**刻意不建表**：新增表会改变迁移哈希，而备份导入按迁移哈希做跨版本校验，那会把已有导出文件全判成「跨版本」而拒收。
+- **版本的「发送到邮箱」也是管理员能力**（`POST /api/admin/resumes/:resumeId/versions/:versionId/email`）：把某个存档版本现做成 Word + PDF 一起发出，取的是**版本快照**而不是当前草稿，docx 字体仍沿用前端探测的结果。入口按钮在版本列表里，按 `isAdmin` 决定是否渲染；普通账号直接打接口是 403，未配邮件通道是 503。
 - **发信走第三方邮件 API 的 HTTP 接口，不走 SMTP**：云端平台对出站 25/465 端口常有封锁。请求体按 Resend 约定组织（`attachments` 里 base64 的 `content`），换服务商只改 `MAIL_API_URL`。失败退避 6 小时重试，错误原文记进状态文件。手动补发用 `bun run backup:mail`，发成功后本月不会再自动发第二封。
 
 ## 部署（Railway）

@@ -1,5 +1,5 @@
 import { formatBytes, runBackupJob } from './backup-scheduler'
-import { backupMailRecipients, mailConfigured } from './mail'
+import { mailConfigured, mailRecipients } from './mail'
 
 /**
  * 手动发一次备份邮件：`bun run backup:mail`
@@ -9,11 +9,13 @@ import { backupMailRecipients, mailConfigured } from './mail'
  * 所以发成功之后本月也不会再自动发第二封。
  */
 
-if (!mailConfigured() || backupMailRecipients().length === 0) {
+if (!mailConfigured()) {
   console.error('未配置 MAIL_API_KEY 或收件人，请先补 server/.env（见 .env.example）')
   process.exit(1)
 }
 
 const { filename, month, bytes } = await runBackupJob()
 
-console.log(`已发送 ${month} 的备份邮件：${filename}（${formatBytes(bytes)}）`)
+console.log(
+  `已发送 ${month} 的备份邮件：${filename}（${formatBytes(bytes)}）→ ${mailRecipients().join('、')}`,
+)

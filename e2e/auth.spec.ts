@@ -26,7 +26,12 @@ test('未登录访问受保护页面会被重定向到登录页', async ({ page 
 test('登录表单校验与错误提示', async ({ page }) => {
   await page.goto('/login')
 
-  // 空表单提交提示必填
+  // 登录页用户名默认预填 admin，密码留空（省一次输入）
+  await expect(page.getByLabel('用户名')).toHaveValue('admin')
+  await expect(page.getByLabel('密码')).toHaveValue('')
+
+  // 清空用户名后提交，空用户名与空密码都提示必填
+  await page.getByLabel('用户名').fill('')
   await page.getByRole('button', { name: '登录' }).click()
   await expect(page.getByText('请输入用户名')).toBeVisible()
   await expect(page.getByText('请输入密码')).toBeVisible()

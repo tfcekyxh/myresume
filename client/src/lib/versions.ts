@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { ResumeData } from '@mymenu/shared'
 import { api } from './api'
+import { detectDocxFont } from './fonts'
 import { resumeKey } from './resume'
 
 export type VersionSummary = {
@@ -63,6 +64,22 @@ export function useDeleteVersion(resumeId: string) {
       // 删掉最后一份版本会清空草稿的「已存档」基准，标签依赖它
       void queryClient.invalidateQueries({ queryKey: resumeKey(resumeId) })
     },
+  })
+}
+
+/**
+ * 把某个存档版本导出成 Word + PDF 发到配置的邮箱。
+ *
+ * 接口挂在 /api/admin 下：这是管理员能力，服务端会按 ADMIN_USERNAME 拦掉普通账号。
+ * docx 用什么字体由打开方本机决定，所以和下载导出一样先在本机探测再带过去。
+ */
+export function useEmailVersion(resumeId: string) {
+  return useMutation({
+    mutationFn: (versionId: string) =>
+      api<{ ok: true; to: string[] }>(`/admin/resumes/${resumeId}/versions/${versionId}/email`, {
+        method: 'POST',
+        body: JSON.stringify({ fontFamily: detectDocxFont() }),
+      }),
   })
 }
 
